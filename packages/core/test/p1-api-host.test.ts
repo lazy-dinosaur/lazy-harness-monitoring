@@ -139,7 +139,7 @@ describe('P1 public API and second-host review', () => {
     expect(p.delivery.delivered).toHaveLength(8) // maxItems is 4, only limits pending items.
     expect(p.mailbox.traces).toHaveLength(16)
   })
-  test('runtime timeout is cooperative: pending raw handler survives abort until explicitly released', async () => {
+  test('runtime timeout is terminal while raw handler remains accounted until explicitly released', async () => {
     const c = createScenario({ id: 'review.timeout', events: ['user.prompt'], kinds: ['user-text'] })
     let release!: () => void, aborted!: Promise<void>
     const raw = new Promise<void>(resolve => { release = resolve })
@@ -155,11 +155,14 @@ describe('P1 public API and second-host review', () => {
       .then(result => { settled = true; return result })
     try {
       await aborted
-      expect(settled).toBe(false)
-      expect('stop' in runtime).toBe(false)
-      expect('dispose' in runtime).toBe(false)
-      release()
       expect((await pending)[0]!.status).toBe('uncertain')
-    } finally { release(); await pending; await c.close() }
+      expect(settled).toBe(true)
+      expect(runtime.getStatus()).toMatchObject({ rawActive: 1, logicalActive: 0 })
+      let idle = false; const drain = runtime.idle().then(() => { idle = true })
+      await Promise.resolve(); expect(idle).toBe(false)
+      release(); await drain
+      expect(runtime.getStatus().rawActive).toBe(0)
+      expect(runtime.outcomes).toHaveLength(1)
+    } finally { release(); runtime.dispose(); await pending; await runtime.idle(); await c.close() }
   })
 })

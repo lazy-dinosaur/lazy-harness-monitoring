@@ -1,8 +1,10 @@
-// Monitoring engine v2 module runtime (S4). Source-local; no hooks, timers, network or model calls of its own.
+// Monitoring engine v2 runtime: bounded in-session scheduling; no host hooks/network/model calls of its own.
+// Timeout/cancel is logical. Hard termination is owned by the worker execution port implementation.
 // Turns a trigger (module matched its purpose + selected evidence) into the module's declared background jobs and
 // enforces the ENGINE RULES that are not module options: loop guard, idempotency, user-approved budget gate before
 // any job that declares cost, uncertain effect = terminal stop (never retried), risk-tier output limits, report mode.
 import { assertMonitoringWatchable, resolveMonitoringWatch } from '../sdk/trigger-points.ts'
+import { RuntimeWorkQueue } from './runtime-work-queue.ts'
 import { canonicalJsonHash } from '../sdk/canonical-json.ts'
 import type { MonitoringEffectiveJob, MonitoringModuleDeclaration } from '../sdk/declaration.ts'
 import type { RealtimeWatchModule } from './monitoring-core-realtime-selection.ts'
@@ -53,13 +55,15 @@ export class ApprovedBudgetGate {
 export interface IdempotencyStore { get(key: string): string | undefined; put(key: string, state: string): void }
 export class MemoryIdempotencyStore implements IdempotencyStore { private readonly m = new Map<string, string>(); get(k: string) { return this.m.get(k) } put(k: string, s: string) { this.m.set(k, s) } }
 
-export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): void; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number }>
+export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): void; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number }>
 
 export class MonitoringModuleRuntime {
   private readonly modules = new Map<string, RegisteredModule>()
   private readonly store: IdempotencyStore
   readonly outcomes: JobOutcome[] = []
+  private readonly work: RuntimeWorkQueue
   constructor(private readonly options: RuntimeOptions) {
+    this.work = new RuntimeWorkQueue({ ...(options.maxActive !== undefined ? { maxActive: options.maxActive } : {}), ...(options.maxQueued !== undefined ? { maxQueued: options.maxQueued } : {}), ...(options.maxWork !== undefined ? { maxWork: options.maxWork } : {}), ...(options.jobTimeoutMs !== undefined ? { timeoutMs: options.jobTimeoutMs } : {}) })
     for (const m of options.modules) {
       assertMonitoringWatchable(m.declaration.watch.events)
       if (this.modules.has(m.moduleId)) throw new Error('duplicate runtime module')
@@ -68,8 +72,16 @@ export class MonitoringModuleRuntime {
     }
     this.store = options.idempotency ?? new MemoryIdempotencyStore()
   }
+  /** Auto-started for handler compatibility. Restart only after raw idle; lifetime count never resets. */
+  start() { this.work.start() }
+  stop(reason?: string) { this.work.stop(reason) }
+  dispose() { this.work.dispose() }
+  idle() { return this.work.idle() }
+  getStatus() { return this.work.getStatus() }
   private record(o: JobOutcome) { this.outcomes.push(Object.freeze(o)); try { this.options.trace?.({ type: 'job', ...o, stage: this.modules.get(o.moduleId)?.stage ?? 'active' }) } catch { /* tracing never changes outcomes */ } return o }
   async onTrigger(trigger: Trigger, signal: AbortSignal = new AbortController().signal): Promise<readonly JobOutcome[]> {
+    const state = this.work.getStatus().state
+    if (state !== 'running') return [this.record({ moduleId: trigger.moduleId, jobId: '*', eventId: trigger.eventId, status: 'skipped', reason: `runtime_${state}`, reported: false })]
     const m = this.modules.get(trigger.moduleId)
     if (!m) return [this.record({ moduleId: trigger.moduleId, jobId: '*', eventId: trigger.eventId, status: 'skipped', reason: 'unknown_module', reported: false })]
     const out: JobOutcome[] = []
@@ -100,12 +112,14 @@ export class MonitoringModuleRuntime {
       lease = r.lease
     }
     this.store.put(key, 'started')
-    const controller = new AbortController(), timer = setTimeout(() => controller.abort('job timeout'), this.options.jobTimeoutMs ?? 30000)
-    const signal = AbortSignal.any([parent, controller.signal])
-    let result: JobResult | undefined, failure: string | undefined
-    try { result = await handler.run(Object.freeze({ trigger, job, ...(lease ? { lease } : {}), signal })) } catch (e) { failure = String(e instanceof Error ? e.message : e).slice(0, 200) } finally { clearTimeout(timer); lease?.settle() }
+    const completion = await this.work.execute(signal => handler.run(Object.freeze({ trigger, job, ...(lease ? { lease } : {}), signal })), parent, () => lease?.settle())
+    if (completion.status === 'refused' || (completion.status === 'cancelled' && completion.certainty === 'terminal')) {
+      this.store.put(key, 'rejected'); return skip(completion.reason, key)
+    }
+    const result = completion.status === 'completed' ? completion.value : undefined
+    const failure = completion.status === 'completed' ? undefined : completion.reason
     // Uncertain effect = terminal stop: the key stays consumed, so the same trigger is never retried.
-    if (failure !== undefined || !result || result.status === 'unknown' || signal.aborted) { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: failure ?? (signal.aborted ? 'aborted' : 'unknown_result'), reported: false }) }
+    if (failure !== undefined || !result || result.status === 'unknown') { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: failure ?? 'unknown_result', reported: false }) }
     // Risk-tier output limits.
     if (job.riskTier === 'proposal' && result.status === 'executed') { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: 'tier_violation:proposal_executed', reported: false }) }
     if (job.riskTier === 'read-only' && (result.status === 'executed' || result.status === 'proposed')) { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: `tier_violation:read_only_${result.status}`, reported: false }) }
