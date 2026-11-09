@@ -2,7 +2,7 @@ import { defineMonitoringModule, effectiveMonitoringJobs, createInMemoryWorkerPo
 import { ApprovedBudgetGate, MonitoringModuleRuntime, watchModuleFromDeclaration, type JobResult, type Report } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 import { createIndependentSelectionPipelines, type RealtimeSelectionPacket } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
 import { scriptedModels, question } from '../../../../examples/p1/support.ts'
-import { attachPiFrames, createParentReportDelivery, PiMonitoringObserver } from '../../src/index.ts'
+import { attachPiFrames, createParentReportDelivery, PiMonitoringObserver, type ParentReportOrigin } from '../../src/index.ts'
 import { ContextCarryMailbox } from '@lazy-harness/monitoring-core/engine/monitoring-core-context-mailbox.ts'
 import { realSdk } from './real-sdk.ts'
 
@@ -28,6 +28,7 @@ export async function pipelineFixture(options: {
       goal: 'Synthetic P3 pipeline qualification', isPermitted: () => true } })
   const mailbox = new ContextCarryMailbox({ maxAgeMs: 10000, maxCarryTurns: 1, maxItems: 8, maxTextBytes: 4096, sourceVersion: () => 'v1' })
   const delivery = createParentReportDelivery({ mailbox }), reports: Report[] = [], calls: WorkerJobRequest[] = []
+  const origins = new Map<string, ParentReportOrigin>()
   const port = createInMemoryWorkerPort<WorkerJobRequest, JobResult>((request, signal) => {
     calls.push(request)
     return options.worker?.(request, signal) ?? { status: 'prepared', report: { text: 'P3_PIPELINE_REPORT' } }
@@ -35,7 +36,7 @@ export async function pipelineFixture(options: {
   const runtime = new MonitoringModuleRuntime({ modules: [{ moduleId: 'p3', declaration: binding.declaration!,
     declarationHash: binding.declarationHash!, jobs: effectiveMonitoringJobs(binding.declaration!, undefined, '/jobs')! }],
     budget: new ApprovedBudgetGate(), handlers: {}, workerPort: port,
-    report: report => { reports.push(report); return delivery.enqueue(report) } })
+    report: report => { reports.push(report); return delivery.enqueue(report, { origin: origins.get(report.eventId)! }) } })
   const observer = new PiMonitoringObserver(() => undefined)
   const f = await realSdk({ observer, extensions: [pi => { attachPiFrames(pi as any, observer, set) }, delivery.extension] })
   const packets: RealtimeSelectionPacket[] = []
@@ -45,8 +46,11 @@ export async function pipelineFixture(options: {
       if (!offer.isCurrent()) continue
       for (const packet of (offer.candidate.payload as any).packets as RealtimeSelectionPacket[]) {
         packets.push(packet)
-        await runtime.onTrigger({ moduleId: packet.moduleId, eventId: packet.eventId,
-          sessionId: f.session.sessionManager.getSessionId(), evidence: packet.materials.map(m => ({ id: m.id, kind: m.kind, version: m.version, text: m.text })) })
+        origins.set(packet.eventId, delivery.captureOrigin())
+        try {
+          await runtime.onTrigger({ moduleId: packet.moduleId, eventId: packet.eventId,
+            sessionId: f.session.sessionManager.getSessionId(), evidence: packet.materials.map(m => ({ id: m.id, kind: m.kind, version: m.version, text: m.text })) })
+        } finally { origins.delete(packet.eventId) }
       }
     }
     await runtime.idle()

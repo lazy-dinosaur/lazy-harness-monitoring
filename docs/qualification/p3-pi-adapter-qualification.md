@@ -180,7 +180,17 @@ Command: `bun hosts/pi/test/hooks-overhead.ts`. **100 paired repetitions**, five
 
 Separately observed enabled **prompt-plus-observer-idle wall** p50 **43.4076 ms**, p95 **70.1224 ms**; includes synchronous work and SDK/faux streaming, and is not asynchronous-only latency or a real model latency. Zero fetch attempts. Startup/shutdown/tree/compaction/UI/unsupported hooks lack N=100 overhead samples. Machine variability, growing session projection, GC and ring eviction are not controlled; no acceptance threshold is inferred.
 
-## Findings and proposed minimal deltas — NOT IMPLEMENTED
+## Implemented fixes
+
+Changes below are approved option-A fixes; historical findings/proposals below describe the pre-fix review. P1 deltas 4, 5, 10, 11 and R7 persistence remain out of scope.
+
+| Finding | Commit (subject uniquely identifies commit) | Tests / API |
+|---|---|---|
+| F1 | `fix(pi): F1 - retain late-worker origin scope` | Flipped tree-navigation finding into refusal; same-branch full-path control and immutable/foreign origin probe. Added `ParentReportOrigin`, `ParentReportEnqueueMeta`, `captureOrigin()` and optional enqueue origin metadata. Capture before async dispatch; direct enqueue remains immediate-only. No core runtime change. |
+
+F1 local verification: `bun run test` — 287 pass, 0 fail, 1842 assertions, 31 files. All four reproduction tsc commands exited 0 with no diagnostics. No unrelated pre-existing test changed.
+
+## Historical findings and proposed minimal deltas
 
 ### F1 — Late worker result loses branch origin
 

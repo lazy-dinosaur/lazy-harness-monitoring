@@ -58,7 +58,7 @@ for (const transition of ['input', 'tree', 'compact', 'session'] as const) test(
   } finally { release.resolve(); await x.dispose() }
 })
 
-test('FINDING: late worker report after tree change is stamped with current branch by default delivery sink', async () => {
+test('SDK late worker report retains immutable origin and is refused after tree navigation', async () => {
   const entered = deferred(), release = deferred()
   const x = await pipelineFixture({ worker: async () => { entered.resolve(); await release.promise; return { status: 'prepared', report: { text: 'OLD_BRANCH_REPORT' } } } })
   try {
@@ -67,9 +67,10 @@ test('FINDING: late worker report after tree change is stamped with current bran
     const user = x.f.session.sessionManager.getBranch().find((e: any) => e.type === 'message' && e.message.role === 'user')!
     await x.f.session.navigateTree(user.id, { summarize: false })
     release.resolve(); await draining
-    expect(x.runtime.outcomes[0]!.reported).toBe(true)
+    expect(x.runtime.outcomes[0]!.reported).toBe(false)
+    expect(x.runtime.outcomes[0]!.reportReceipt?.status).toBe('failed')
     x.f.setSteps([ai.fauxAssistantMessage('new branch')]); await x.f.session.prompt('new branch request')
-    expect(JSON.stringify(x.f.requests.at(-1))).toContain('OLD_BRANCH_REPORT')
-    expect(x.delivery.deliveryReceipts).toHaveLength(1)
+    expect(JSON.stringify(x.f.requests.at(-1))).not.toContain('OLD_BRANCH_REPORT')
+    expect(x.delivery.deliveryReceipts).toHaveLength(0)
   } finally { release.resolve(); await x.dispose() }
 })
