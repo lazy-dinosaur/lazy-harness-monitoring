@@ -17,6 +17,22 @@ function setup(invoke?: MonitoringModelBackend['invoke'], enabled = true) {
   set.accept(frame(1, 'session_start'))
   return { set, models, allowed, packets(id: string) { return set.byModule[id]!.coordinator.takeReady('module').flatMap(o => (o.candidate.payload as unknown as { packets: RealtimeSelectionPacket[] }).packets) } }
 }
+for (const mode of ['shallow', 'getter', 'cross-session'] as const) test(`pipeline rejects ${mode} snapshot before capture or judgement`, async () => {
+  const h = setup(); let reads = 0, progressReads = 0
+  const f = frame(2)
+  if (mode === 'shallow') (f as any).snapshot = { sessionId: 'session', available: true }
+  if (mode === 'cross-session') (f.snapshot as any).sessionId = 'other'
+  if (mode === 'getter') Object.defineProperty(f, 'snapshot', { enumerable: true, get() { reads++; throw Error('must not read') } })
+  try {
+    expect(() => h.set.accept(f, () => { progressReads++; return {} })).not.toThrow(); await h.set.idle()
+    expect(reads).toBe(0); expect(progressReads).toBe(0); expect(h.models.calls).toHaveLength(0)
+    for (const p of h.set.pipelines) {
+      expect(p.coordinator.getStatus()).toMatchObject({ state: 'stopped', started: 0, ready: 0 })
+      expect(p.coordinator.traces.at(-1)?.reason).toBe('malformed')
+      expect(p.window.getStatus().state).toBe('stopped')
+    }
+  } finally { h.set.dispose(); await h.set.idle() }
+})
 for (const mode of ['throw', 'malformed', 'invalid-choice', 'provider-error'] as const) test(`judge ${mode} is isolated to its module and grants never widen`, async () => {
   const base = scriptedModels().host.backends.judge
   const h = setup(async (request, context) => {

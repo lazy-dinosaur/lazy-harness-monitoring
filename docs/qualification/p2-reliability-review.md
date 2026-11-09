@@ -1,6 +1,20 @@
 # P2 — core mechanical reliability and failure isolation (issue #1)
 
-## Scope and gate decision
+## Implemented fixes
+
+User-approved option A supersedes the three historical findings below. The original review and receipts remain historical evidence, not current behavior. P1 deltas 4, 5, 10 and 11 remain out of scope; R7 persistence is not implemented.
+
+| Finding | Implementation commit | Correct-behavior tests and proof |
+|---|---|---|
+| P2-F1 | `fix(core): P2-F1 - strictly validate snapshot admission` (this fix commit) | Flipped shallow-snapshot witness in `p2-frames.test.ts`; added `p2-admission.test.ts` and three pipeline rejection cases in `p2-selection.test.ts`. Required structure/types, session consistency, unknown fields, nested accessors, valid unavailable shape, copying/freezing and no judgement are covered. |
+
+P2-F1 local verification: `bun run test` — 362 pass, 0 fail, 2173 assertions across 29 files. `bunx tsc -p packages/core/tsconfig.json`, `bunx tsc -p hosts/pi/tsconfig.json`, and `bunx tsc -p examples/p1/tsconfig.json` each exited 0 without compiler output. `hosts/pi/test/tsconfig.json` does not exist. Initial new pipeline assertions used the wrong fixture property (`requests` instead of `calls`); corrected before this passing full run. No other pre-existing test changed.
+
+Public API: added `parseObservationFrame(input: unknown): ObservationFrame` through `/host` (and `host/frames.ts`). It uses the existing bounded plain-JSON parser and returns a frozen copy. Malformed frames stop coordinator/pipeline as `malformed` (technical admission failure), before preparation, material capture or judgement; valid unavailable snapshots remain observable without preparation. **BREAKING for malformed/untyped adapters:** missing/wrong snapshot fields and undeclared structural keys now reject instead of being prepared. No exported frame type changed.
+
+Capability matrix: unchanged; Pi still declares only `inject-context`, snapshot mode `tail`. No new actions, dependencies, registrations, configuration keys, worker features or persistence capabilities.
+
+## Scope and gate decision (historical review)
 
 Review base: `qualification/p1` at `50b3263`. Tests/helpers commit: `e956b19a70031b51bdf75cfc3de5e9f7a1c5fdd7` on `qualification/p2`. The subsequent commit adds only this document. No existing source, tests, manifests, lockfiles, configuration, shared qualification index or shared requirements matrix were edited. No push or GitHub write occurred; the issue was read using the requested CLI command. No paid inference, live session data, or business mutation was used. Only the required frozen dependency installation used package downloads.
 

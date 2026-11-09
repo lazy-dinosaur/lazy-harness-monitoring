@@ -51,12 +51,13 @@ for (const outer of [false, true]) test(`unavailable ${outer ? 'snapshot' : 'fra
   try { c.accept(frame(1, 'tool_result', outer ? { snapshot: { ...frame(1).snapshot, available: false } } : { available: false })); await c.idle(); expect(c.getStatus()).toMatchObject({ observed: 1, started: 0, ready: 0 }); expect(c.traces.at(-1)?.reason).toBe('unavailable') }
   finally { c.dispose() }
 })
-test('FINDING: coordinator only shallow-validates snapshot internals', async () => {
+test('coordinator rejects snapshots missing required internals', async () => {
   const c = coordinator()
   try {
     const malformed = { sessionId: 'session', available: true }
     c.accept(frame(1, 'tool_result', { snapshot: malformed as ObservationFrame['snapshot'] })); await c.idle()
-    expect(c.getStatus()).toMatchObject({ state: 'running', started: 1, ready: 1 })
+    expect(c.getStatus()).toMatchObject({ state: 'stopped', observed: 0, started: 0, ready: 0 })
+    expect(c.traces.at(-1)?.reason).toBe('malformed')
   } finally { c.dispose() }
 })
 for (const seed of P2_SEEDS) test(`seed ${seed}: source/permission revocation and completion cannot publish stale work`, async () => {
