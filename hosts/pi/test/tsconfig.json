@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["real-sdk*.test.ts", "observer-protections.test.ts", "hooks-overhead.ts", "support/**/*.ts"],
+  "exclude": ["pending-from-core"]
+}
