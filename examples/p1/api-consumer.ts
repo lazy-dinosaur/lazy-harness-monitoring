@@ -37,11 +37,11 @@ export function configuredCoreProbe(capabilities = { hostId: 'synthetic-other', 
   })
 }
 
-export function piDeliveryProbe() {
+export function piDeliveryProbe(retention: { maxTrace?: number; maxSeen?: number; maxDelivered?: number } = {}) {
   const hooks = new Map<string, (e: any, ctx: any) => unknown>()
   const mailbox = new ContextCarryMailbox({ maxAgeMs: 1000, maxCarryTurns: 1,
-    maxItems: 4, maxTextBytes: 8192, sourceVersion: () => 'r1' })
-  const delivery = createParentReportDelivery({ mailbox, now: () => 100 })
+    maxItems: 4, maxTextBytes: 8192, maxTrace: retention.maxTrace, maxSeen: retention.maxSeen, sourceVersion: () => 'r1' })
+  const delivery = createParentReportDelivery({ mailbox, now: () => 100, maxDelivered: retention.maxDelivered })
   delivery.extension({ on(name, handler) { hooks.set(name, handler) } })
   const ctx = { sessionManager: { getSessionId: () => 'synthetic-session' } }
   hooks.get('session_start')!({}, ctx); hooks.get('input')!({}, ctx)

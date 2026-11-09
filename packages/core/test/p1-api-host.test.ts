@@ -128,16 +128,18 @@ describe('P1 public API and second-host review', () => {
       expect((await throwing.onTrigger(trigger))[0]!.reason).toBe('duplicate:prepared')
     } finally { await c.close() }
   })
-  test('retained delivery history and mailbox trace exceed pending queue capacity (finite witness)', () => {
-    const p = piDeliveryProbe()
+  test('delivery diagnostics are bounded independently of live mailbox dedup keys', () => {
+    const p = piDeliveryProbe({ maxDelivered: 3, maxTrace: 4 })
     for (let i = 0; i < 8; i++) {
       expect(p.delivery.onReport({ moduleId: 'review.retention', jobId: 'prepare', eventId: `e${i}`,
         sessionId: 'synthetic-session', mode: 'on-result', text: 'advice', riskTier: 'read-only' })).toBe(true)
       p.hooks.get('context_with_system')!({ messages: [] }, p.ctx)
     }
     expect(p.mailbox.pending).toBe(0)
-    expect(p.delivery.delivered).toHaveLength(8) // maxItems is 4, only limits pending items.
-    expect(p.mailbox.traces).toHaveLength(16)
+    expect(p.delivery.delivered).toHaveLength(3)
+    expect(p.mailbox.traces).toHaveLength(4)
+    expect(p.delivery.getStatus().deliveredEvicted).toBe(5)
+    expect(p.mailbox.getStatus()).toMatchObject({ seen: 8, traceEvicted: 12 })
   })
   test('runtime timeout is terminal while raw handler remains accounted until explicitly released', async () => {
     const c = createScenario({ id: 'review.timeout', events: ['user.prompt'], kinds: ['user-text'] })

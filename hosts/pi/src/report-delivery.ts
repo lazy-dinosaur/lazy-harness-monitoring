@@ -6,8 +6,11 @@ import { canonicalJsonHash } from '@lazy-harness/monitoring-core'
 import { ContextCarryMailbox, type CarryDependency, type CarryDelivery } from '@lazy-harness/monitoring-core/engine/monitoring-core-context-mailbox.ts'
 import type { Report } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 
-export type ParentReportDeliveryOptions = Readonly<{ mailbox: ContextCarryMailbox; now?: () => number }>
+export type ParentReportDeliveryOptions = Readonly<{ mailbox: ContextCarryMailbox; now?: () => number; maxDelivered?: number }>
 export function createParentReportDelivery(options: ParentReportDeliveryOptions) {
+  const maxDelivered = options.maxDelivered ?? 256
+  if (!Number.isSafeInteger(maxDelivered) || maxDelivered < 1) throw new Error('invalid delivered retention')
+  let deliveredEvicted = 0
   const now = options.now ?? (() => Date.now())
   let sessionId: string | undefined, turn = 0, branch = 0, firstRequest = true
   const installed = new WeakSet<object>()
@@ -36,9 +39,11 @@ export function createParentReportDelivery(options: ParentReportDeliveryOptions)
         firstRequest = false
         if (!out.length) return undefined
         delivered.push(...out)
+        if (delivered.length > maxDelivered) { const excess = delivered.length - maxDelivered; delivered.splice(0, excess); deliveredEvicted += excess }
         return { messages: [...e.messages, ...out.map(d => ({ role: 'user', content: [{ type: 'text', text: d.text }], timestamp: Date.now() }))] }
       })
     },
+    getStatus() { return Object.freeze({ deliveredRetained: delivered.length, deliveredEvicted }) },
     get delivered(): readonly CarryDelivery[] { return Object.freeze([...delivered]) },
   })
 }

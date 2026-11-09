@@ -23,28 +23,40 @@ export type RegisteredModule = Readonly<{ moduleId: string; declaration: Monitor
 
 /** Explicit user-approved budget windows; never created implicitly. Reservation = the job's declared per-run caps. */
 export class ApprovedBudgetGate {
-  private readonly windows = new Map<string, { caps: Partial<Record<CostKind, number>>; used: Partial<Record<CostKind, number>>; reserved: Partial<Record<CostKind, number>>; approvedBy: string }>()
+  private readonly windows = new Map<string, { caps: Partial<Record<CostKind, number>>; used: Partial<Record<CostKind, number>>; reserved: Partial<Record<CostKind, number>>; revoked: boolean }>()
+  constructor(private readonly maxWindows = 1024) { if (!Number.isSafeInteger(maxWindows) || maxWindows < 1) throw new Error('invalid budget window bound') }
   approve(scope: Readonly<{ moduleId: string; jobId?: string; caps: Partial<Record<CostKind, number>>; approvedBy: string }>) {
-    if (!scope.approvedBy || Object.values(scope.caps).some(v => typeof v !== 'number' || !(v > 0))) throw new Error('invalid budget approval')
-    this.windows.set(scope.jobId ? `${scope.moduleId}.${scope.jobId}` : scope.moduleId, { caps: { ...scope.caps }, used: {}, reserved: {}, approvedBy: scope.approvedBy })
+    if (!scope.approvedBy || Object.values(scope.caps).some(v => typeof v !== 'number' || !Number.isFinite(v) || !(v > 0))) throw new Error('invalid budget approval')
+    const key = scope.jobId ? `${scope.moduleId}.${scope.jobId}` : scope.moduleId, prior = this.windows.get(key)
+    if (prior && Object.values(prior.reserved).some(n => n! > 0)) throw new Error('budget window has live reservations')
+    if (!prior && this.windows.size >= this.maxWindows) throw new Error('budget window capacity')
+    this.windows.set(key, { caps: { ...scope.caps }, used: {}, reserved: {}, revoked: false })
   }
+  /** Explicit scope expiry. In-flight reservations remain owned until raw settlement. */
+  revoke(moduleId: string, jobId?: string): void {
+    const key = jobId ? `${moduleId}.${jobId}` : moduleId, w = this.windows.get(key)
+    if (!w) return
+    w.revoked = true
+    if (!Object.values(w.reserved).some(n => n! > 0)) this.windows.delete(key)
+  }
+  getStatus() { return { windows: this.windows.size, maxWindows: this.maxWindows } }
   reserve(moduleId: string, jobId: string, perRun: Partial<Record<CostKind, number>>): { lease?: BudgetLease & { settle(): void }; reason?: string } {
-    const w = this.windows.get(`${moduleId}.${jobId}`) ?? this.windows.get(moduleId)
+    const key = this.windows.has(`${moduleId}.${jobId}`) ? `${moduleId}.${jobId}` : moduleId, w = this.windows.get(key)
     if (!w) return { reason: 'budget_not_approved' }
+    if (w.revoked) return { reason: 'budget_revoked' }
     const kinds = Object.keys(perRun) as CostKind[]
     for (const k of kinds) { const cap = w.caps[k]; if (cap === undefined) return { reason: `budget_kind_not_approved:${k}` }; if ((w.used[k] ?? 0) + (w.reserved[k] ?? 0) + perRun[k]! > cap) return { reason: `budget_exhausted:${k}` } }
     for (const k of kinds) w.reserved[k] = (w.reserved[k] ?? 0) + perRun[k]!
-    const spent: Partial<Record<CostKind, number>> = {}
-    let open = true
+    const spent: Partial<Record<CostKind, number>> = {}; let open = true
     const lease = {
       consume(kind: CostKind, amount: number) {
         if (!open) throw new Error('budget lease closed')
-        if (!(amount >= 0) || !kinds.includes(kind)) throw new Error(`budget_kind_not_declared:${kind}`)
+        if (!Number.isFinite(amount) || !(amount >= 0) || !kinds.includes(kind)) throw new Error(`budget_kind_not_declared:${kind}`)
         if ((spent[kind] ?? 0) + amount > perRun[kind]!) throw new Error(`budget_per_run_exceeded:${kind}`)
         spent[kind] = (spent[kind] ?? 0) + amount
       },
       remaining: (kind: CostKind) => (perRun[kind] ?? 0) - (spent[kind] ?? 0),
-      settle() { if (!open) return; open = false; for (const k of kinds) { w.reserved[k] = (w.reserved[k] ?? 0) - perRun[k]!; w.used[k] = (w.used[k] ?? 0) + (spent[k] ?? 0) } },
+      settle: () => { if (!open) return; open = false; for (const k of kinds) { w.reserved[k] = (w.reserved[k] ?? 0) - perRun[k]!; w.used[k] = (w.used[k] ?? 0) + (spent[k] ?? 0) }; if (w.revoked && !Object.values(w.reserved).some(n => n! > 0)) this.windows.delete(key) },
     }
     return { lease }
   }
@@ -53,16 +65,26 @@ export class ApprovedBudgetGate {
 
 /** Records every attempted key, including uncertain ones, so an uncertain effect is never retried. */
 export interface IdempotencyStore { get(key: string): string | undefined; put(key: string, state: string): void }
-export class MemoryIdempotencyStore implements IdempotencyStore { private readonly m = new Map<string, string>(); get(k: string) { return this.m.get(k) } put(k: string, s: string) { this.m.set(k, s) } }
+/** Protection keys have instance lifetime, NOT diagnostic-ring lifetime. No TTL/LRU eviction. */
+export class MemoryIdempotencyStore implements IdempotencyStore {
+  private readonly m = new Map<string, string>()
+  constructor(private readonly maxKeys = 4096) { if (!Number.isSafeInteger(maxKeys) || maxKeys < 1) throw new Error('invalid idempotency bound') }
+  get(k: string) { return this.m.get(k) }
+  put(k: string, s: string) { if (!this.m.has(k) && this.m.size >= this.maxKeys) throw new Error('idempotency_capacity'); this.m.set(k, s) }
+  getStatus() { return { keys: this.m.size, maxKeys: this.maxKeys } }
+}
 
-export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): void; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number }>
+export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): void; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number; maxOutcomes?: number }>
 
 export class MonitoringModuleRuntime {
   private readonly modules = new Map<string, RegisteredModule>()
   private readonly store: IdempotencyStore
-  readonly outcomes: JobOutcome[] = []
+  private readonly outcomeLog: JobOutcome[] = []
+  private outcomesEvicted = 0
+  get outcomes(): readonly JobOutcome[] { return Object.freeze([...this.outcomeLog]) }
   private readonly work: RuntimeWorkQueue
   constructor(private readonly options: RuntimeOptions) {
+    if (!Number.isSafeInteger(options.maxOutcomes ?? 256) || (options.maxOutcomes ?? 256) < 1) throw new Error('invalid outcome retention')
     this.work = new RuntimeWorkQueue({ ...(options.maxActive !== undefined ? { maxActive: options.maxActive } : {}), ...(options.maxQueued !== undefined ? { maxQueued: options.maxQueued } : {}), ...(options.maxWork !== undefined ? { maxWork: options.maxWork } : {}), ...(options.jobTimeoutMs !== undefined ? { timeoutMs: options.jobTimeoutMs } : {}) })
     for (const m of options.modules) {
       assertMonitoringWatchable(m.declaration.watch.events)
@@ -77,8 +99,8 @@ export class MonitoringModuleRuntime {
   stop(reason?: string) { this.work.stop(reason) }
   dispose() { this.work.dispose() }
   idle() { return this.work.idle() }
-  getStatus() { return this.work.getStatus() }
-  private record(o: JobOutcome) { this.outcomes.push(Object.freeze(o)); try { this.options.trace?.({ type: 'job', ...o, stage: this.modules.get(o.moduleId)?.stage ?? 'active' }) } catch { /* tracing never changes outcomes */ } return o }
+  getStatus() { return Object.freeze({ ...this.work.getStatus(), outcomesRetained: this.outcomeLog.length, outcomesEvicted: this.outcomesEvicted }) }
+  private record(o: JobOutcome) { this.outcomeLog.push(Object.freeze(o)); if (this.outcomeLog.length > (this.options.maxOutcomes ?? 256)) { this.outcomeLog.shift(); this.outcomesEvicted++ }; try { this.options.trace?.({ type: 'job', ...o, stage: this.modules.get(o.moduleId)?.stage ?? 'active' }) } catch { /* tracing never changes outcomes */ } return o }
   async onTrigger(trigger: Trigger, signal: AbortSignal = new AbortController().signal): Promise<readonly JobOutcome[]> {
     const state = this.work.getStatus().state
     if (state !== 'running') return [this.record({ moduleId: trigger.moduleId, jobId: '*', eventId: trigger.eventId, status: 'skipped', reason: `runtime_${state}`, reported: false })]
@@ -111,7 +133,7 @@ export class MonitoringModuleRuntime {
       if (!r.lease) return skip(r.reason!, key)
       lease = r.lease
     }
-    this.store.put(key, 'started')
+    try { this.store.put(key, 'started') } catch { lease?.settle(); return skip('idempotency_capacity', key) }
     const completion = await this.work.execute(signal => handler.run(Object.freeze({ trigger, job, ...(lease ? { lease } : {}), signal })), parent, () => lease?.settle())
     if (completion.status === 'refused' || (completion.status === 'cancelled' && completion.certainty === 'terminal')) {
       this.store.put(key, 'rejected'); return skip(completion.reason, key)
