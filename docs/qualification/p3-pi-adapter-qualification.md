@@ -367,7 +367,40 @@ P1 examples tsc: exit 0 (no diagnostics)
 P3 tests tsc: exit 0 (no diagnostics)
 ```
 
-Clean-checkout receipts are recorded after the candidate commit; until then: **UNVERIFIED**.
+### Detached clean-checkout verification
+
+Verified candidate **`4e6f085d5cd20e949022e53e98ec0e20b4116072`** before the final evidence-only commit. Ran `git worktree add --detach /tmp/monitoring-p3-clean-<unique> HEAD`, then the frozen install, full intended root script and all four compiler commands inside that new checkout. The checkout had no pre-existing node_modules. The worktree was removed after completion; `git status --short` there printed nothing after the checks. The final follow-up changes only this receipt document.
+
+Frozen install summary (verbatim):
+
+```text
+bun install v1.3.14 (0d9b296a)
+
++ @types/bun@1.4.4
++ typescript@7.0.2
+
+256 packages installed [982.00ms]
+```
+
+Clean-checkout test summary (verbatim):
+
+```text
+ 286 pass
+ 0 fail
+ 1834 expect() calls
+Ran 286 tests across 30 files. [3.74s]
+```
+
+Clean-checkout compiler wrapper summaries (verbatim; compiler stdout itself was empty):
+
+```text
+core tsc: exit 0 (no diagnostics)
+Pi tsc: exit 0 (no diagnostics)
+P1 examples tsc: exit 0 (no diagnostics)
+P3 tests tsc: exit 0 (no diagnostics)
+```
+
+All commands exited zero. No lockfile changes were needed by the frozen install. No GitHub writes, push, live model invocation or runtime source edits were part of this verification.
 
 ## Remaining UNVERIFIED / unsupported
 
