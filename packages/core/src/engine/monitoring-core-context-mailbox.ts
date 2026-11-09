@@ -4,7 +4,7 @@
 // Relevance to the new request is left to the main model: this owner never classifies user text.
 export type CarryScope = Readonly<{ sessionId: string; branchId: string; turn: number }>
 export type CarryDependency = Readonly<{ id: string; version: string }>
-export type CarryItem = Readonly<{ id: string; moduleId: string; scope: CarryScope; createdAt: number; dependencies: readonly CarryDependency[]; text: string }>
+export type CarryItem = Readonly<{ id: string; reportId?: string; moduleId: string; scope: CarryScope; createdAt: number; dependencies: readonly CarryDependency[]; text: string }>
 export type CarryDelivery = Readonly<{ item: CarryItem; carried: boolean; ageMs: number; text: string }>
 export type CarryTrace = Readonly<{ at: number; id: string; reason: 'queued' | 'delivered_same_turn' | 'delivered_carried' | 'scope_changed' | 'expired_age' | 'carry_exceeded' | 'source_changed' | 'duplicate' | 'overflow' | 'invalid' | 'seen_capacity' }>
 export type CarryOptions = Readonly<{ maxAgeMs: number; maxCarryTurns: number; maxItems: number; maxTextBytes: number; maxTrace?: number; maxSeen?: number; sourceVersion(id: string): string | undefined }>

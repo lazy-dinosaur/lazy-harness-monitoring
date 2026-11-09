@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Type from 'typebox'
 import { defineMonitoringModule, parseMonitoringConfiguration, prepareMonitoringBindings, MonitoringConfigurationError } from '../src/sdk/index.ts'
-import { ApprovedBudgetGate, MemoryIdempotencyStore, MonitoringModuleRuntime, type JobHandler, type Report, type Trigger } from '../src/engine/monitoring-engine-runtime.ts'
+import { monitoringReportId, ApprovedBudgetGate, MemoryIdempotencyStore, MonitoringModuleRuntime, type JobHandler, type Report, type Trigger } from '../src/engine/monitoring-engine-runtime.ts'
 import { validateMonitoringModuleDeclaration, effectiveMonitoringJobs } from '../src/sdk/declaration.ts'
 import { createFileTraceSink, pruneTraces } from '../src/engine/monitoring-trace.ts'
 import { createIndependentSelectionPipelines, type RealtimeWatchModule } from '../src/engine/monitoring-core-realtime-selection.ts'
@@ -28,7 +28,7 @@ describe('run stages (task154)', () => {
   })
   const runtime = (stage: any, jobs: any[], handlers: Record<string, JobHandler>, rows: any[], reports: Report[]) => {
     const { declaration, hash } = validateMonitoringModuleDeclaration({ purpose: { question: q }, watch: { events: ['input'], kinds: ['user-text'] }, jobs }, grants)
-    return new MonitoringModuleRuntime({ modules: [{ moduleId: 'stage.mod', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/m')!, stage }], handlers, budget: new ApprovedBudgetGate(), idempotency: new MemoryIdempotencyStore(), report: r => reports.push(r), trace: r => rows.push(r) })
+    return new MonitoringModuleRuntime({ modules: [{ moduleId: 'stage.mod', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/m')!, stage }], handlers, budget: new ApprovedBudgetGate(), idempotency: new MemoryIdempotencyStore(), report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, trace: r => rows.push(r) })
   }
   const trig: Trigger = { moduleId: 'stage.mod', eventId: 'e1', sessionId: 's1', evidence: [{ id: 'm1', kind: 'user-text', version: 'v1', text: 'x' }] }
   test('observe never runs jobs; shadow runs read-only jobs and withholds reports; active reports', async () => {

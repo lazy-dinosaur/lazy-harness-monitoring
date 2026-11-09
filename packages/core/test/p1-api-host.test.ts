@@ -113,7 +113,7 @@ describe('P1 public API and second-host review', () => {
     expect(p.delivery.delivered).toHaveLength(1)
     expect(p.mailbox.pending).toBe(0)
   })
-  test('reported is not a receipt: absent callback still reports true; throwing callback rejects after key consumption', async () => {
+  test('absent/throwing receiver records failed/unknown receipt without rerunning prepared jobs', async () => {
     const c = createScenario({ id: 'review.receipt', events: ['user.prompt'], kinds: ['user-text'] })
     const options = { modules: [{ moduleId: 'review.receipt', declaration: c.declaration,
       declarationHash: c.binding.declarationHash!, jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')! }],
@@ -121,10 +121,10 @@ describe('P1 public API and second-host review', () => {
     const trigger = { moduleId: 'review.receipt', eventId: 'e1', sessionId: 'synthetic-session', evidence: [] }
     try {
       const absent = new MonitoringModuleRuntime(options)
-      expect((await absent.onTrigger(trigger))[0]!.reported).toBe(true)
+      expect((await absent.onTrigger(trigger))[0]).toMatchObject({ reported: false, reason: 'report_failed', reportReceipt: { status: 'failed', reason: 'receiver_absent' } })
       const throwing = new MonitoringModuleRuntime({ ...options, report() { throw new Error('receiver failed') } })
-      await expect(throwing.onTrigger(trigger)).rejects.toThrow('receiver failed')
-      expect(throwing.outcomes).toHaveLength(0)
+      expect((await throwing.onTrigger(trigger))[0]).toMatchObject({ status: 'prepared', reported: false, reason: 'report_unknown', reportReceipt: { status: 'unknown', reason: 'receiver_exception' } })
+      expect(throwing.outcomes).toHaveLength(1)
       expect((await throwing.onTrigger(trigger))[0]!.reason).toBe('duplicate:prepared')
     } finally { await c.close() }
   })

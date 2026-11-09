@@ -18,7 +18,10 @@ export type JobContext = Readonly<{ trigger: Trigger; job: MonitoringEffectiveJo
 export type JobResult = Readonly<{ status: 'executed' | 'proposed' | 'prepared' | 'rejected' | 'unknown'; effectId?: string; report?: Readonly<{ text: string }>; output?: unknown }>
 export type JobHandler = Readonly<{ run(context: JobContext): JobResult | Promise<JobResult>; idempotencyKey?(trigger: Trigger): string | undefined }>
 export type Report = Readonly<{ moduleId: string; jobId: string; eventId: string; sessionId: string; mode: 'always' | 'on-result'; text: string; riskTier: string }>
-export type JobOutcome = Readonly<{ moduleId: string; jobId: string; eventId: string; key?: string; status: 'executed' | 'proposed' | 'prepared' | 'rejected' | 'uncertain' | 'skipped'; reason: string; effectId?: string; reported: boolean }>
+export type ReportEnqueueReceipt = Readonly<{ reportId: string; status: 'enqueued' | 'failed' | 'unknown'; reason?: string }>
+export type ReportDeliveryReceipt = Readonly<{ reportId: string; status: 'delivered'; boundary: 'context_with_system' }>
+export function monitoringReportId(report: Report): string { return canonicalJsonHash(report) }
+export type JobOutcome = Readonly<{ moduleId: string; jobId: string; eventId: string; key?: string; status: 'executed' | 'proposed' | 'prepared' | 'rejected' | 'uncertain' | 'skipped'; reason: string; effectId?: string; reported: boolean; reportReceipt?: ReportEnqueueReceipt }>
 export type RegisteredModule = Readonly<{ moduleId: string; declaration: MonitoringModuleDeclaration; declarationHash: string; jobs: readonly MonitoringEffectiveJob[]; /** task154 run stage (default active). */ stage?: 'off' | 'observe' | 'shadow' | 'active' }>
 
 /** Explicit user-approved budget windows; never created implicitly. Reservation = the job's declared per-run caps. */
@@ -74,7 +77,7 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
   getStatus() { return { keys: this.m.size, maxKeys: this.maxKeys } }
 }
 
-export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): void; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number; maxOutcomes?: number }>
+export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): ReportEnqueueReceipt; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number; maxOutcomes?: number }>
 
 export class MonitoringModuleRuntime {
   private readonly modules = new Map<string, RegisteredModule>()
@@ -147,14 +150,24 @@ export class MonitoringModuleRuntime {
     if (job.riskTier === 'read-only' && (result.status === 'executed' || result.status === 'proposed')) { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: `tier_violation:read_only_${result.status}`, reported: false }) }
     if (result.status === 'executed' && !result.effectId) { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: 'missing_effect_receipt', reported: false }) }
     this.store.put(key, result.status)
-    let reported = false
+    let reported = false, reportReceipt: ReportEnqueueReceipt | undefined
     if (stage === 'shadow' && result.status !== 'rejected') return this.record({ ...base, key, status: result.status, reason: 'stage:shadow-report-withheld', reported: false, ...(result.report?.text ? { withheldReport: result.report.text } : {}) } as JobOutcome)
     if (result.status !== 'rejected' && (job.report === 'always' || (job.report === 'on-result' && result.report?.text))) {
       const text = result.report?.text ?? `${m.moduleId}.${job.id}: ${result.status}`
-      this.options.report?.(Object.freeze({ moduleId: m.moduleId, jobId: job.id, eventId: trigger.eventId, sessionId: trigger.sessionId, mode: job.report, text, riskTier: job.riskTier }))
-      reported = true
+      const report = Object.freeze({ moduleId: m.moduleId, jobId: job.id, eventId: trigger.eventId, sessionId: trigger.sessionId, mode: job.report, text, riskTier: job.riskTier })
+      const reportId = monitoringReportId(report)
+      reportReceipt = { reportId, status: 'failed', reason: 'receiver_absent' }
+      if (this.options.report) {
+        try {
+          const receipt = this.options.report(report)
+          reportReceipt = receipt && receipt.reportId === reportId && ['enqueued', 'failed', 'unknown'].includes(receipt.status)
+            ? Object.freeze({ reportId, status: receipt.status })
+            : { reportId, status: 'unknown', reason: 'invalid_receiver_receipt' }
+        } catch { reportReceipt = { reportId, status: 'unknown', reason: 'receiver_exception' } }
+      }
+      reported = reportReceipt.status === 'enqueued'
     }
-    return this.record({ ...base, key, status: result.status, reason: 'ok', ...(result.effectId ? { effectId: result.effectId } : {}), reported })
+    return this.record({ ...base, key, status: result.status, reason: reportReceipt && !reported ? `report_${reportReceipt.status}` : 'ok', ...(result.effectId ? { effectId: result.effectId } : {}), reported, ...(reportReceipt ? { reportReceipt: Object.freeze(reportReceipt) } : {}) })
   }
 }
 

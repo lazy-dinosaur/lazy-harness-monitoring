@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { effectiveMonitoringJobs, validateMonitoringModuleDeclaration } from '@lazy-harness/monitoring-core'
-import { ApprovedBudgetGate, MonitoringModuleRuntime, type JobHandler, type RuntimeOptions } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
+import { monitoringReportId, ApprovedBudgetGate, MonitoringModuleRuntime, type JobHandler, type RuntimeOptions } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r }); return { promise, resolve } }
 function runtime(handler: JobHandler, options: Partial<RuntimeOptions> = {}, costly = false) {
   const { declaration, hash } = validateMonitoringModuleDeclaration({ purpose: { question: { instructions: 'q', criteria: { run: 'r', skip: 's', defer: 'd' } } },
@@ -10,7 +10,7 @@ function runtime(handler: JobHandler, options: Partial<RuntimeOptions> = {}, cos
   const budget = new ApprovedBudgetGate(); if (costly) budget.approve({ moduleId: 'm', caps: { workerDispatches: 2 }, approvedBy: 'fixture' })
   const reports: unknown[] = []
   const r = new MonitoringModuleRuntime({ modules: [{ moduleId: 'm', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')! }],
-    budget, handlers: { 'm.job': handler }, report: r => reports.push(r), ...options })
+    budget, handlers: { 'm.job': handler }, report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, ...options })
   const fire = (eventId: string, signal?: AbortSignal) => r.onTrigger({ moduleId: 'm', sessionId: 's', eventId, evidence: [] }, signal)
   return { r, fire, reports, budget }
 }

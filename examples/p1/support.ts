@@ -11,7 +11,7 @@ import {
   createIndependentSelectionPipelines, type RealtimeWatchModule, type RealtimeSelectionPacket,
 } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
 import {
-  ApprovedBudgetGate, MonitoringModuleRuntime, watchModuleFromDeclaration,
+  monitoringReportId, ApprovedBudgetGate, MonitoringModuleRuntime, watchModuleFromDeclaration,
   type JobContext, type JobResult, type Report,
 } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 
@@ -121,7 +121,7 @@ export function createScenario(options: ScenarioOptions) {
     modules: [{ moduleId: options.id, declaration: declared, declarationHash: binding.declarationHash!,
       jobs: effectiveMonitoringJobs(declared, undefined, '/jobs')!,
       stage: effectiveMonitoringStage(declared, options.stage, '/stage') }],
-    handlers: { [`${options.id}.prepare`]: handler }, budget, report: r => reports.push(r), trace: r => trace.push(r),
+    handlers: { [`${options.id}.prepare`]: handler }, budget, report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, trace: r => trace.push(r),
   })
   const set = createIndependentSelectionPipelines({ enabled: true,
     material: { allowedKinds: options.kinds, references: options.references ?? [], toolFields: { bash: ['command'] } },
