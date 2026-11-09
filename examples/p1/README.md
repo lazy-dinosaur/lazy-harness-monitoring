@@ -13,7 +13,7 @@ No real models, subprocess workers, knowledge writes or external network calls a
 
 `support.ts` makes declarations, explicit grants, scripted native-classifier/worker bindings,
 selection pipelines and job handlers, and manually forwards current selected packets into the
-runtime. Reports are callback receipts, NOT proof of receipt in actual next model input.
+runtime. Existing handlers now run through the module-owned in-memory worker port. Scripted report sinks return matching explicit enqueue receipts, NOT proof of receipt in actual next model input. Configured processor probes require host capabilities and reject unsupported modules before factories run.
 Default memory mode is observe. Its separately opted-in synthetic shadow declaration prepares
 an unapproved/unwritten candidate with report never; it is not an escalation of configuration.
 The test-loop reducer is bounded fixture code, not a generic condition DSL or meaningful-edit oracle.
@@ -38,4 +38,4 @@ See `packages/core/test/p1-scenarios.test.ts` for actual invocations and negativ
 The second adapter lives in `packages/core/test/p1-api-host.test.ts`; it uses no Pi context.
 
 Read [the P1 review](../../docs/qualification/p1-api-condition-review.md) for exact coverage,
-source citations, UNVERIFIED optional scenarios and proposed blockers. No source fixes are included.
+historical source citations, implemented delta ledger and UNVERIFIED optional scenarios. The approved follow-up implements deltas 1/2/3/6/7/8/9/12; 4/5/10/11 remain proposals. Real SDK/Fabric execution and semantic quality remain UNVERIFIED.

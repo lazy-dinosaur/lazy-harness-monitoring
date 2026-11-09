@@ -2,7 +2,7 @@
 
 ## Scope, decision and reproduction
 
-Review base: `qualification/p0` at `1d921b2`; local review branch: `qualification/p1`. This is a **review**, not permission to implement the deltas below. Existing source and tests are unchanged. New examples/tests import core, host and engine symbols through package export maps, never relative `src` paths. Engine paths include `.ts` because the current `./engine/*` export maps literally to `./src/engine/*` (`packages/core/package.json:9–12`). Clean-install/registry packaging remains UNVERIFIED.
+Historical review base: `qualification/p0` at `1d921b2`; P0 boundary correction is `6eae938`, and the original P1 review rebased to `12afe20`. The approved follow-up on `qualification/p1` implements deltas **1, 2, 3, 6, 7, 8, 9, 12** below. Original condition/API/scenario tables and F1–F11 findings are preserved as **historical preimplementation evidence**, including their original line citations and wrong-behavior witnesses; they are not current invariant claims. The Implemented section is authoritative for current behavior and test titles. Deltas 4, 5, 10, 11 remain proposals. Examples and new tests use public package exports; engine export paths include `.ts`. Clean-install/registry packaging remains UNVERIFIED.
 
 **Result:** the four bounded offline scenarios can be composed through public exports. This does NOT qualify actual Pi receipt, semantic accuracy, durable memory, real worker execution or production operation. D1' supersedes the former connector decision: no package here depends on Fabric; core owns an independent worker execution port + reusable fake conformance, and lazy-harness owns EXACT-pinned Fabric implementation and the first bun/Node >=24 probe in issue #1 P7 thin-consumer work, out of repo. D2 remains provisional and unmeasured. Pi declares only `inject-context`.
 
@@ -18,7 +18,7 @@ bunx tsc -p examples/p1/tsconfig.json
 
 The non-workspace `examples/p1` directory needs three ignored local package-root links. `prepare-local-links.ts` verifies/links the already-present core, Pi and TypeBox packages; it neither installs dependencies nor aliases source entrypoints. TypeScript inherits existing strict/noEmit settings; no existing tsconfig was modified. Initial targeted execution exposed missing example dependency resolution (one import error and compiler diagnostics); adding this explicit offline setup resolved it. There were also two inspection-command mistakes (missing test filename; malformed grep regex), not product failures.
 
-Final scoped test summary, verbatim (passing case lines omitted here):
+Original P1 review test summary, before the approved implementation (verbatim):
 
 ```text
 bun test v1.3.14 (0d9b296a)
@@ -38,7 +38,7 @@ Each of the three exact `bunx tsc -p ...` commands above exited 0 with **no outp
 - `X/` = `examples/p1/`. A local example import is allowed; all library imports within those examples use public package exports.
 - **expressible** = a public API expresses the scoped local behavior, not operational acceptance; **module-owned** = trusted host/module code must implement it; **unsupported** = cannot promise it via the reviewed path; **needs-change** = a demonstrated inconsistency/safety gap. These are different from matrix `verified`, which always names a finite passing assertion.
 
-## Complete condition inventory
+## Historical condition inventory (before implementation; superseded by Implemented below)
 
 Every row below is reached through root export `MONITORING_TRIGGER_POINTS` / `resolveMonitoringWatch`; `T:9–38,41–51` independently enumerates all **29** points, checks hook mapping, positive payload, wrong hook, raw-hook compatibility and repeated identical predicate calls. `when` is a predicate, NOT payload validation. No predicate means unconditional on the matching raw hook. All points have stateless resolver semantics; exactly-once/event accounting belongs elsewhere.
 
@@ -151,7 +151,7 @@ rg -n 'hostSupportIssues' packages/core/src hosts/pi/src
 
 Only result: `packages/core/src/host/contract.ts:32:export function hostSupportIssues(...)`. No startup/composition caller exists in those source trees. A:55 diagnoses missing `tool_call` and `block-tool-call`, then constructs/registers/starts configured core successfully. A:70 validates a matching v2 declaration/grants/hash with unsupported block requirement and constructs runtime plus selection and attaches the unsupported second host; no classifier calls occur for its irrelevant input. These are **negative safety findings**, not enforcement passes. The utilities do not infer action requirements from arbitrary trusted code. README's previous refusal wording was stronger than implementation; the index now links this limitation.
 
-## Findings (current behavior, not fixes)
+## Historical findings (preimplementation behavior, not current guarantees)
 
 1. **F1 — malformed payloads can trigger.** `S/trigger-points.ts:13,17–40,67`: optional-chain prompt condition admits null/primitive/empty values; unconditional points ignore payload shape; role-only finals admit missing bodies; exception catch only catches thrown predicates. T:75/83 records current behavior, not the desired “must never trigger” invariant. A valid matching hook is assumed; full malformed frame handling is a different P2 layer.
 2. **F2 — overlapping source authority.** `S/trigger-points.ts:14–16`: extension-origin steer/followUp matches both user and extension-input; missing source can match user.prompt. T:64 records this. A's ordinary extension input is excluded but extension-origin steer is not inherently excluded. No security meaning should be inferred from the `user.*` name alone.
@@ -165,9 +165,9 @@ Only result: `packages/core/src/host/contract.ts:32:export function hostSupportI
 10. **F10 — generated contracts still Pi-shaped.** `S/contracts.generated.ts:44–48` and `H/frames.ts:1–13`: frame-only consumers work, legacy observer input is not host-neutral; vocabulary/branch/canonical-stage names require normalization. The generation pipeline itself is UNVERIFIED.
 11. **F11 — optional provenance coverage/attestation gap.** `E/monitoring-core-source-projection.ts:76–92,147–155` only assigns current actors to user/assistant/tool text/progress, not tool-arguments/tool-meta/event-meta/history; host-record is explicitly not attestation and user approval remains originVerified false/association unresolved. `E/monitoring-core-realtime-material.ts:243–250` admits host reference content without observation-path redaction (`:120–123`). B/D use plain selection with explicit admitted tool fields, not fabricated approval. Approval authenticity and full host-content redaction remain UNVERIFIED; do not loosen approval guards.
 
-## PROPOSED minimal deltas — approval required, none implemented
+## Delta design ledger — approved subset implemented below; other deltas remain PROPOSED
 
-The following API names are **proposals**, not existing exports. Blocking labels are gate/contract decisions: they do not prohibit writing additional fault fixtures before implementation approval.
+The original minimal designs are retained for review. The user approved implementation of 1/2/3/6/7/8/9/12; those are now implemented as scoped below. 4/5/10/11 remain PROPOSED and were not implemented. Blocking labels are gate/contract decisions, not proof of operational acceptance.
 
 1. **Payload validation and source separation — blocks P2/P3 safety qualification.** Problem: F1/F2. Smallest change: add per-hook plain payload shape guards before named predicates (including required source/body/status fields), make user steer/follow-up explicitly exclude extension source; decide treatment of legacy missing-source callers. Keep raw-hook compatibility explicitly documented as trusted or validate raw payloads at host admission. Files: `S/trigger-points.ts`, host normalization and new tests. Impact: malformed/ambiguous events stop matching; raw compatibility may require versioned opt-in. Proof: current T malformed/overlap findings change to false, valid hook cases still pass; cover inherited/accessor/missing fields. Risk: old SDK events without source/final-body fields need actual pinned-SDK evidence before tightening.
 2. **Fail-closed startup support — blocks P2/P3.** Problem: F5 unsupported requirements silently admitted. Smallest change: require `capabilities: HostCapabilities` on safe configured-host composition; run `validateHostCapabilities` and `hostSupportIssues` in `prepareMonitoringBindings` before factories/core start/host attach, using effective watch names and explicit job action requirements (exclude engine-owned selected-material bridge action). Throw structured `MonitoringConfigurationError` code proposed `HOST_UNSUPPORTED`, containing bounded module/kind/name issues, admit nothing on any unsupported requirement. The safe v2 composition in delta 5 must use the same check before construction. Files: `S/{bindings,core,diagnostics}.ts`, `H/contract.ts`, composition tests/Pi caller. Impact: mandatory host capability port is a breaking safe-start boundary; low-level constructors remain trusted mechanics, clearly not qualified startup. Proof: A:55/70 become explicit refusal before factories, handlers, hooks or model calls, plus supported Pi inject-context positive. Risk: arbitrary string job grants are not all host actions; reject unknown external actions or require an explicit core-internal/host action mapping, never silently drop them.
@@ -181,17 +181,93 @@ The following API names are **proposals**, not existing exports. Blocking labels
 10. **Separate legacy Pi observer types from frame contract — nonblocking for P2/P3 frame-only composition.** Problem: F10. Smallest change: designate `ObservationContext` as legacy Pi-shaped observer input, re-export from Pi with deprecation guidance; make host frames the authoritative neutral type and restore a local generator source-of-truth before regeneration. Files: generated-contract source/generator (location must first be decided), core/Pi exports/docs. Impact: preserve old type alias for compatibility; no claim that renaming sessionManager alone makes Pi observer portable. Proof: A second-host frame consumer compiles without Pi context; old Pi consumers continue compiling; deterministic regeneration check. Risk: duplicate generated/frame definitions drift or break external structural consumers.
 11. **Tool-source metadata and authenticated authority port — nonblocking for read-only P2/P3 advice; blocks authenticated-approval/persistence claims.** Problem: F11. Smallest change: non-authoritative tool-arguments/meta/event-meta actor adapter with exact IDs plus authenticated versioned approval association and consent port; host-reference redaction policy. Files: projection contracts/tests, host material docs. Compatibility: additive, unresolved approval stays fail-closed. Proof: optional B/D projection with exact identity, forged approval refused and source revision invalidation. Risk: broad allowlists or inferred provenance weaken safety. Remains a proposal.
 
-12. **Module-owned worker execution port + fake-backed conformance — blocks P3. PROPOSED (approved implementation batch).** Problem: D1' requires a host-independent worker boundary instead of an in-repo Fabric connector. Smallest change: export `WorkerExecutionPort`, a handler adapter/fake in-memory implementation and a reusable `runWorkerPortConformance(makePort)` suite; dispatch existing runtime handlers only through the port. Files: new core worker contract/implementation/conformance, root exports, runtime and tests. Compatibility: existing handlers work through the adapter; no Fabric dependency, import or mirrored API; lazy-harness P7 owns EXACT-pinned Fabric implementation and bun/Node >=24 check. Proving test: fake-backed timeout/cancel/global concurrency/lifetime/terminal/uncertain/no-double-completion plus existing runtime tests. Risk: logical terminal does not prove physical termination; raw work remains accounted until implementation receipt/settlement.
+12. **Module-owned worker execution port + fake-backed conformance — blocks P3. IMPLEMENTED below (original proposal retained).** Problem: D1' requires a host-independent worker boundary instead of an in-repo Fabric connector. Smallest change: export `WorkerExecutionPort`, a handler adapter/fake in-memory implementation and a reusable `runWorkerPortConformance(makePort)` suite; dispatch existing runtime handlers only through the port. Files: new core worker contract/implementation/conformance, root exports, runtime and tests. Compatibility: existing handlers work through the adapter; no Fabric dependency, import or mirrored API; lazy-harness P7 owns EXACT-pinned Fabric implementation and bun/Node >=24 check. Proving test: fake-backed timeout/cancel/global concurrency/lifetime/terminal/uncertain/no-double-completion plus existing runtime tests. Risk: logical terminal does not prove physical termination; raw work remains accounted until implementation receipt/settlement.
 
-## Scope and privacy audits
+## Implemented
+
+All eight approved deltas are committed separately. `S/`, `E/`, `H/`, `P/` retain the path aliases above; test paths in this table are under `packages/core/test/`. This is finite offline mechanical evidence, not P2/P3/P5 acceptance.
+
+| Delta | Commit | Implementation files | Proving tests added/flipped |
+|---|---|---|---|
+| 1 | `a23df16` | `S/trigger-points.ts`; example `memory-candidate.ts` | `p1-trigger-boundaries.test.ts`: malformed named payloads false, explicit user source, extension/source isolation, no getter invocation, valid positive bodies; `monitoring-trigger-points.test.ts`: valid payload fixtures; `p1-scenarios.test.ts`: explicit source on shadow user-final fixture |
+| 2 | `ef54c86` | `S/bindings.ts`, `S/diagnostics.ts`, `H/contract.ts`; example `api-consumer.ts` | `p1-api-host.test.ts`: unsupported configured/v2 preflight refuses; new `p1-startup.test.ts`: supported Pi inject-context, zero factories/engines on any unsupported module, unknown action rejection, explicit local mapping, missing/invalid capability rejection |
+| 3 | `d0b3aa4` | `S/trigger-points.ts`, `S/declaration.ts`, `S/bindings.ts`, `E/monitoring-engine-runtime.ts`, `E/monitoring-core-realtime-selection.ts` | `p1-trigger-boundaries.test.ts`: every named/raw catalog row explicitly admitted/rejected, including run.aborted; `p1-api-host.test.ts`: low-level selection refusal retained |
+| 6 | `9129f10` | `S/trigger-points.ts`, `P/report-delivery.ts` | `p1-api-host.test.ts`: metadata equals context_with_system, duplicate callbacks produce one fake-hook message; new `p1-delivery-identity.test.ts`: repeated/later hooks, content revisions, dependency ordering/staleness, repeated registration |
+| 7 | `dae011e` | `E/monitoring-engine-runtime.ts`, new `E/runtime-work-queue.ts` | `p1-api-host.test.ts`: timeout settles logically before raw release; new `p1-runtime-lifecycle.test.ts`: global concurrency/queue refusal, raw budget reservation after timeout, no late report, stop/dispose/restart, caller cancellation, lifetime cap |
+| 8 | `134ee05` | `E/monitoring-engine-runtime.ts`, `E/monitoring-core-context-mailbox.ts`, `P/report-delivery.ts`; example `api-consumer.ts` | `p1-api-host.test.ts`: diagnostic bounds/counters instead of unbounded witness; new `p1-retention.test.ts`: 100 distinct keys with ring eviction, uncertain/prepared duplicate protection, capacity refusal, bounded seen/delivered diagnostics, reservation-safe budget revoke |
+| 9 | `6403618` | `E/monitoring-engine-runtime.ts`, `E/monitoring-core-context-mailbox.ts`, `P/report-delivery.ts`; example `support.ts` | `p1-api-host.test.ts`: absent/throwing sink yields failed/unknown receipt and duplicate:prepared; new `p1-report-receipts.test.ts`: absent/failed/unknown/mismatched/void/throwing/accepted receivers, no handler rerun, separate Pi enqueue/hook-delivery receipts and stale/scope cases |
+| 12 | `c800fbe` | new `S/worker-execution.ts`, `S/worker-execution-memory.ts`, `S/worker-execution-conformance.ts`; `S/index.ts`, `E/runtime-work-queue.ts`, `E/monitoring-engine-runtime.ts` | new `worker-execution-port.test.ts`: public-entry conformance against in-memory port, deliberately broken fake rejected, supplied port dispatch bypasses local handler, ceiling refusal, foreign/forged tickets; all earlier runtime tests now exercise the handler-to-port adapter |
+
+### Verification receipts
+
+For each delta commit the exact scoped command `bun test packages/core/test hosts/pi/test/pi-host.test.ts` passed, followed by both `bunx tsc -p packages/core/tsconfig.json` and `bunx tsc -p hosts/pi/tsconfig.json` exiting 0 with no output. Last passing counts at those commits:
+
+| Delta | pass / fail | expect calls | files |
+|---|---|---|---|
+| 1 | 223 / 0 | 1295 | 18 |
+| 2 | 227 / 0 | 1305 | 19 |
+| 3 | 228 / 0 | 1403 | 19 |
+| 6 | 231 / 0 | 1418 | 20 |
+| 7 | 235 / 0 | 1444 | 21 |
+| 8 | 238 / 0 | 1468 | 22 |
+| 9 | 240 / 0 | 1504 | 23 |
+| 12 | 244 / 0 | 1515 | 24 |
+
+Final exact test summary, verbatim (passing case lines omitted):
+
+```text
+bun test v1.3.14 (0d9b296a)
+
+ 244 pass
+ 0 fail
+ 1515 expect() calls
+Ran 244 tests across 24 files. [1.53s]
+```
+
+Final `bunx tsc -p packages/core/tsconfig.json`, `bunx tsc -p hosts/pi/tsconfig.json`, and `bunx tsc -p examples/p1/tsconfig.json`: **each exited 0 with no output**. The examples continue to import library APIs only through public exports. A direct public-entry Bun probe (from `packages/core`) ran `runWorkerPortConformance(createInMemoryWorkerPort)` and returned:
+
+```json
+{"conformanceChecks":24,"handlerAdapter":"function","watch":{"prompt":"watchable","aborted":"control-only","delivery":"delivery-only","unknown":"unknown"}}
+```
+
+Failures during implementation were inspected and corrected before committing: missing-source positive scenario fixtures after delta 1; delta 2 string-Set typing and unavailable direct Pi alias in a core test (changed to existing public-export probe); delta 7 generic error conversion losing the typed budget-overrun reason (preserved without changing the assertion); delta 9 test expected-status typing. Passing counts above are not claims that no intermediate failures occurred.
+
+### Changes to pre-existing tests (relative to the original P1 review)
+
+- `monitoring-trigger-points.test.ts`: add required source/text/tool identity to valid payloads and explicit host capabilities/internal action mapping. Assertions otherwise unchanged.
+- `monitoring-declaration.test.ts`: explicit legacy `hostRequirements`, host capabilities and module-local action mapping in the setup helper; no behavioral assertion changed.
+- `monitoring-trace-stage.test.ts`: explicit host capabilities/local action mapping and receipt-returning report sink; no behavioral assertion changed.
+- `monitoring-engine-runtime.test.ts`: receipt-returning sink plus helper import only; all existing assertions preserved, including budget-overrun reason.
+- Original P1 fixtures were intentionally flipped: `p1-trigger-boundaries.test.ts` no longer accepts malformed/ambiguous named payloads or unusable declarations, and `extension.input` replaces `user.extension-input`; `p1-api-host.test.ts` replaces unsafe CURRENT witnesses with the corrected startup/delivery/timeout/retention/receipt assertions; `p1-scenarios.test.ts` adds explicit source to its valid shadow user-final fixture. No scenario assertion was weakened.
+- No pending Pi test was restored, run or retired. No generated contract was edited.
+
+### Current compatibility and limits
+
+Added root exports: `MonitoringWatchSupport`, `monitoringWatchSupport`, `assertMonitoringWatchable`; `WorkerExecutionLimits`, `WorkerCompletion`, `WorkerTicket`, `WorkerExecutionStatus`, `WorkerExecutionPort`, `WorkerOperation`, `WorkerPortFactory`, `createInMemoryWorkerPort`, `runWorkerPortConformance`, `createHandlerWorkerPort`, `WorkerJobRequest`. The port names/shapes are module-owned, not Fabric aliases. The engine wildcard also makes the new `RuntimeWorkQueue`, `WorkLimits`, `WorkResult` mechanics reachable; consumers should use the root worker port contract. No top-level export was removed; the removed named trigger key changes the `MonitoringTriggerPoint` union. Host `hostSupportIssues` accepts arbitrary string action requirements so unknown actions can be diagnosed; `validateHostCapabilities` rejects unknown advertised actions. Additional changed contracts are `CarryItem.reportId`, `CarryOptions.maxTrace/maxSeen`, `CarryTrace`'s `seen_capacity` reason, mailbox/delivery status getters, `ParentReportDeliveryOptions.maxDelivered`, the bounded idempotency/budget constructors, and budget `revoke/getStatus`.
+
+Changed public contracts: `MonitoringHostBindings.capabilities` is mandatory; legacy bindings need explicit `hostRequirements` at configured startup. `internalActions` is an explicit trusted mapping for module-local actions, not an override for reserved host actions. `HOST_UNSUPPORTED` is a new diagnostic code. Unknown external actions fail closed. The full safe v2 builder (delta 5) is still absent; low-level runtime/attach remain trusted composition mechanics, and must not be presented as independently enforced startup.
+
+`user.extension-input` is removed and replaced with `extension.input` (no accepting legacy alias), so no extension input matches `user.*`. Named hooks require plain own-data shape guards and explicit user authority; `user.message` also needs explicit user source. Raw predicates retain trusted compatibility and are not validators. `resolveMonitoringWatch` can still inspect observational predicates, but declaration, binding/runtime/watch mapping and selection admission reject unjudgeable watches (run.aborted included). Empty-subset inconsistency (delta 4) remains unchanged.
+
+Runtime adds optional `workerPort`, lifecycle and status, `maxActive`/`maxQueued`/`maxWork`/`maxOutcomes`; outcomes are readonly snapshots. Defaults: active 4, queue 64, lifetime admissions 1024, timeout 30000ms, outcomes 256. Injected limits cannot exceed explicitly requested ceilings; runtime owns the supplied port lifecycle. Restart requires raw idle and never resets lifetime counts. Timeout/cancel is logically terminal/uncertain, never permission to release a raw slot early, retry an uncertain effect or accept a late report. The port implementation owns hard termination; the in-memory adapter cannot hard-kill promises. A contract-violating port with unknown raw state retains budget reservations.
+
+Memory protection is separate from diagnostic retention: idempotency keys default max 4096, mailbox seen keys default max 4096, both instance-lifetime with **no automatic expiry or eviction**. Capacity fails closed. Replace only after an explicitly closed/reconciled effect/session scope; discarding live stores is unsafe. Diagnostics default 256 each (runtime outcomes, mailbox trace, Pi delivered), with eviction counters. Budget windows default max 1024; explicit `revoke` prevents further reservations and retains live reservations until physical settlement. These finite exercises do not measure RSS/GC or qualify long-run resource performance.
+
+Engine export adds `ReportEnqueueReceipt`, `ReportDeliveryReceipt`, `monitoringReportId`; `JobOutcome.reportReceipt` and a synchronous receipt-returning `RuntimeOptions.report` replace void inference. `reported: true` means a matching receiver accepted enqueue, NOT actual model-input delivery. Missing/throwing/void/mismatched receivers cannot set it. Prepared-job idempotency is independent of delivery: receiver failure does not rerun a handler. Pi adds `enqueue` and separate `deliveryReceipts`; boolean `onReport` remains compatible. Its delivered receipt is for the `context_with_system` hook result only, not a pinned-SDK provider receipt. Stable content/scope/dependency IDs dedupe repeated reports; content/revision changes remain distinct.
+
+### Current scope audit
+
+Executed tracked manifest/lock and core/Pi source scans for the Fabric package name: **0 matches**. The direct public-entry probe above confirms the new root exports and 24 conformance checks. `git diff --name-only 12afe20` restricted to manifests/locks/tsconfigs returned no paths; the approved implementation changed none of them. `git diff --check` passed. A finite pattern scan over changed files from the P0 baseline (including working-tree documentation) found **0 matches** for private home/user paths, email addresses, common provider/cloud/private-key tokens, bearer tokens and JWT-shaped literals; this is not a universal secret detector. The required recursive connector-path grep returns only the qualification index sentence explicitly marking the old plan superseded. No push, GitHub operation, dependency install/upgrade, or protected backup edit was performed.
+
+### Historical scope and privacy audits (original P1 review only)
 
 `git diff --check` passed. Tracked baseline comparison under `packages/core/src`, `hosts/pi/src` and existing test paths was empty; additions are new P1 test files only. Every changed/new file was scanned for private absolute home paths, the prohibited local username, email addresses, common provider/cloud/private-key token shapes, credential assignments, bearer tokens and JWT-shaped literals: **0 matches**. This is a finite pattern scan, not a universal secret-detector guarantee. Import audit found no library deep-source imports; only package exports and local fixture/example sharing. No manifest/lockfile or existing tsconfig changed.
 
 ## Remaining UNVERIFIED / gate handoff
 
 - Real Pi SDK version/hook behavior, actual next provider-input receipt, registration repetition/cleanup in an SDK host, and all six pending migration tests remain P3.
-- D1': EXACT-pinned Fabric implementation and first bun/Node >=24 probe belong to lazy-harness P7 thin-consumer work, out of repo. Core port/fake conformance are required here (delta 12), not real Fabric execution evidence.
-- Complete P2 fault matrix, runtime-wide contention bounds, durable/restart semantics, long-run retained memory/latency/cost and operational kill switch are not qualified by this finite review.
+- D1': core port/handler adapter and 24-check fake conformance are implemented here; EXACT-pinned Fabric implementation and first bun/Node >=24 probe remain lazy-harness P7 thin-consumer work, out of repo. No real Fabric execution is qualified.
+- Complete P2 fault matrix, real host/worker contention, physical termination, durable/restart semantics, RSS/GC/long-run latency/cost and operational kill switch remain UNVERIFIED. Finite in-memory bounds and logical timeout are verified only in the named tests. Actual Pi payload normalization under the stricter named guards needs a pinned SDK fixture; missing source never implies user authority.
 - Semantic relevance/rule correctness/memory quality/test-failure equivalence, independent labels, thresholds and all D2/P5 metrics remain UNVERIFIED. No live session/data collection/paid inference/automatic writes were used or authorized.
 - Scenario-specific optional turn-end/region, revision-changing in-flight judgement, next-prompt carry and authenticated approval cases not explicitly cited as passing remain UNVERIFIED. Synthetic host portability is not real opencode support.
-- No push, no GitHub writes, no dependency install/upgrade, no changes to existing source or existing tests, and no modification of `backup/pre-publish`.
+- No push, GitHub write, dependency install/upgrade or modification of `backup/pre-publish`. Source/tests changed only as listed in the implementation ledger; manifests, lockfile and existing tsconfigs were not changed by the approved follow-up.
