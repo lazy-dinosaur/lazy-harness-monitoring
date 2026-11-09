@@ -68,6 +68,6 @@ export function createParentReportDelivery(options: ParentReportDeliveryOptions)
     },
     getStatus() { return Object.freeze({ deliveredRetained: delivered.length, deliveredEvicted }) },
     get delivered(): readonly CarryDelivery[] { return Object.freeze([...delivered]) },
-    get deliveryReceipts(): readonly ReportDeliveryReceipt[] { return Object.freeze(delivered.filter(d => d.item.reportId).map(d => Object.freeze({ reportId: d.item.reportId!, status: 'delivered' as const, boundary: 'context_with_system' as const }))) },
+    get deliveryReceipts(): readonly ReportDeliveryReceipt[] { return Object.freeze(delivered.filter(d => d.item.reportId).map(d => Object.freeze({ reportId: d.item.reportId!, status: 'delivered' as const, kind: 'hook-boundary' as const, boundary: 'context_with_system' as const }))) },
   })
 }

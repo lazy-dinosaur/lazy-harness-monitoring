@@ -7,17 +7,25 @@ let original: typeof fetch, attempts = 0
 beforeAll(() => { original = globalThis.fetch; globalThis.fetch = Object.assign(async () => { attempts++; throw new Error('network forbidden') }, original) as typeof fetch })
 afterAll(() => { globalThis.fetch = original; expect(attempts).toBe(0) })
 
-test('FINDING: hook-delivered receipt does not prove provider receipt after later context transform', async () => {
+test('SDK stripped report has hook-boundary receipt only and is consumed exactly once', async () => {
   const mailbox = new ContextCarryMailbox({ maxAgeMs: 10000, maxCarryTurns: 1, maxItems: 4, maxTextBytes: 4096, sourceVersion: () => 'v1' })
   const delivery = createParentReportDelivery({ mailbox })
+  const hookSeen: number[] = []
   const f = await realSdk({ extensions: [delivery.extension, pi => {
-    pi.on('context_with_system', event => ({ messages: event.messages.filter(message => !JSON.stringify(message).includes('P3_DROPPED_REPORT')) }))
+    pi.on('context_with_system', event => {
+      hookSeen.push(event.messages.filter(message => JSON.stringify(message).includes('P3_DROPPED_REPORT')).length)
+      return { messages: event.messages.filter(message => !JSON.stringify(message).includes('P3_DROPPED_REPORT')) }
+    })
   }] })
   try {
     expect(delivery.enqueue({ moduleId: 'p3', jobId: 'prepare', eventId: 'event', sessionId: f.session.sessionManager.getSessionId(),
       mode: 'on-result', riskTier: 'read-only', text: 'P3_DROPPED_REPORT' }).status).toBe('enqueued')
-    f.setSteps([ai.fauxAssistantMessage('answer')]); await f.session.prompt('next')
-    expect(f.errors).toEqual([]); expect(delivery.deliveryReceipts).toHaveLength(1)
+    f.setSteps([ai.fauxAssistantMessage('answer'), ai.fauxAssistantMessage('later')]); await f.session.prompt('next'); await f.session.prompt('later')
+    expect(f.errors).toEqual([])
+    expect(delivery.deliveryReceipts).toEqual([{ reportId: expect.any(String), status: 'delivered', kind: 'hook-boundary', boundary: 'context_with_system' }])
+    expect(hookSeen).toEqual([1, 0])
+    expect(delivery.delivered).toHaveLength(1)
+    expect(f.requests).toHaveLength(2)
     expect(JSON.stringify(f.requests)).not.toContain('P3_DROPPED_REPORT')
   } finally { await f.dispose() }
 })

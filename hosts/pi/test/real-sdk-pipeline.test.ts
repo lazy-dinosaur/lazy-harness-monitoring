@@ -25,6 +25,7 @@ test('SDK hooks → conformant frames → selection → worker port → report �
     await x.f.session.prompt('third actual request')
     expect(JSON.stringify(x.f.requests[2])).not.toContain('P3_PIPELINE_REPORT')
     expect(x.delivery.deliveryReceipts).toHaveLength(1)
+    expect(x.delivery.deliveryReceipts[0]).toMatchObject({ kind: 'hook-boundary', boundary: 'context_with_system' })
     expect(x.delivery.delivered[0]!.item.reportId).toBe(x.runtime.outcomes[0]!.reportReceipt!.reportId)
     expect(x.delivery.delivered[0]!.item.dependencies).toEqual(x.packets[0]!.materials.map(({ id, version }) => ({ id, version })))
     expect(x.delivery.delivered[0]!.item.dependencies.length).toBeGreaterThan(0)
