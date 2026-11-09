@@ -19,20 +19,21 @@ export const generatedFrameAcceptsHostFrame = (frame: ObservationFrame): Generat
 export const piExports = { PiMonitoringObserver, createPiObservationExtension, attachPiFrames, piHostCapabilities }
 export const publicErrors = { MonitoringConfigurationError, MonitoringModelError }
 
-export function configuredCoreProbe() {
+export function configuredCoreProbe(capabilities = { hostId: 'synthetic-other', version: '1', events: ['input'], actions: [] as Array<'inject-context' | 'steer' | 'block-tool-call'>, snapshot: 'none' as const }, counters = { factories: 0, engines: 0 }) {
   const binding = defineMonitoringModule({ version: '1', settingsSchema: Type.Object({}, { additionalProperties: false }),
     grants: { actions: ['block-tool-call'], referenceKinds: [] }, destination: 'receipt',
-    create: () => ({ id: 'review.unsupported', eventKinds: ['tool_call'], referenceKinds: [],
-      allowedActions: ['block-tool-call'], run: () => [] }),
+    hostRequirements: { events: ['tool_call'], actions: ['block-tool-call'] },
+    create: () => { counters.factories++; return { id: 'review.unsupported', eventKinds: ['tool_call'], referenceKinds: [],
+      allowedActions: ['block-tool-call'], run: () => [] } },
   })
-  // There is no capabilities/adapter port on this configuration entrypoint.
+  // Mandatory preflight checks metadata before either factory can run.
   return createConfiguredMonitoringCore({ contractVersion: 1,
     source: { kind: 'host-events', scope: 'host-supplied-events' }, goal: 'offline probe', receiver: 'receipt',
     modules: [{ id: 'review.unsupported', version: '1', settings: {} }],
   }, {
-    createCore: options => new MonitoringCore(options), contextIdentity: { scopeId: 'scope', version: 'r1' },
+    createCore: options => { counters.engines++; return new MonitoringCore(options) }, contextIdentity: { scopeId: 'scope', version: 'r1' },
     receivers: { receipt: request => ({ requestId: request.requestId, status: 'recorded' }) },
-    modules: { 'review.unsupported': binding }, allowedSourceScopes: ['host-supplied-events'], maxModules: 1,
+    capabilities, modules: { 'review.unsupported': binding }, allowedSourceScopes: ['host-supplied-events'], maxModules: 1,
   })
 }
 

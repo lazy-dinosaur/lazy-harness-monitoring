@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { MONITORING_DELIVERY_POINTS, effectiveMonitoringJobs, validateMonitoringModuleDeclaration } from '@lazy-harness/monitoring-core'
+import { MONITORING_DELIVERY_POINTS, effectiveMonitoringJobs, validateMonitoringModuleDeclaration, prepareMonitoringBindings, parseMonitoringConfiguration } from '@lazy-harness/monitoring-core'
 import {
   hostSupportIssues, validateHostCapabilities, frameSequenceIssues,
   type MonitoringHostAdapter, type MonitoringFrameTarget, type ObservationFrame,
@@ -52,37 +52,27 @@ describe('P1 public API and second-host review', () => {
     } finally { detach(); set.dispose(); await set.idle() }
     expect(set.pipelines[0]!.selection.getStatus().disposed).toBe(true)
   })
-  test('unsupported event/action is diagnosed but configured registration and start do NOT reject it', () => {
-    const host = secondHost()
-    expect(hostSupportIssues(host.adapter.capabilities, [{ id: 'review.unsupported', watch: ['tool.before'], actions: ['block-tool-call'] }])).toEqual([
-      { moduleId: 'review.unsupported', kind: 'event', name: 'tool_call' },
-      { moduleId: 'review.unsupported', kind: 'action', name: 'block-tool-call' },
-    ])
-    const core = configuredCoreProbe()
-    try {
-      expect(core.getStatus().state).toBe('stopped')
-      expect(core.getStatus().processors).toEqual(['review.unsupported'])
-      core.start(); expect(core.getStatus().state).toBe('running')
-      core.stop(); expect(core.getStatus().state).toBe('stopped')
-    } finally { core.dispose() }
-    expect(core.getStatus().state).toBe('disposed')
+  test('unsupported event/action refuses configured startup before factories or engine construction', () => {
+    const host = secondHost(), counters = { factories: 0, engines: 0 }
+    expect(() => configuredCoreProbe(host.adapter.capabilities as any, counters)).toThrow('review.unsupported unsupported event: tool_call')
+    expect(counters).toEqual({ factories: 0, engines: 0 })
+    expect(() => configuredCoreProbe({ ...host.adapter.capabilities, events: ['tool_call'] } as any, counters)).toThrow('review.unsupported unsupported action: block-tool-call')
+    expect(counters).toEqual({ factories: 0, engines: 0 })
   })
-  test('v2 runtime + host attach also do NOT enforce unsupported requirements', async () => {
-    const host = secondHost()
-    const c = createScenario({ id: 'review.unsupported', events: ['tool.before'], kinds: ['tool-meta'] })
-    const declaration = { ...c.declaration, jobs: c.declaration.jobs.map(job => ({ ...job,
-      grants: { actions: ['block-tool-call'], referenceKinds: ['tool-meta'] } })) }
-    const checked = validateMonitoringModuleDeclaration(declaration, { actions: ['block-tool-call'], referenceKinds: ['tool-meta'] })
-    const runtime = new MonitoringModuleRuntime({ modules: [{ moduleId: 'review.unsupported', declaration: checked.declaration,
-      declarationHash: checked.hash, jobs: effectiveMonitoringJobs(checked.declaration, undefined, '/jobs')! }],
-      handlers: { 'review.unsupported.prepare': { run: () => ({ status: 'prepared' }) } }, budget: new ApprovedBudgetGate() })
-    const detach = host.adapter.attach(c.set)
+  test('declared v2 requirements are refused by shared binding preflight before factories and attach', async () => {
+    const host = secondHost(), c = createScenario({ id: 'review.unsupported', events: ['tool.before'], kinds: ['tool-meta'] })
+    let factories = 0
     try {
-      expect(runtime.outcomes).toEqual([])
-      expect(c.set.pipelines[0]!.selection.getStatus().disposed).toBe(false)
-      host.publish('opened'); host.publish('request', 'cannot emit tool calls'); await c.drain()
+      const declaration = { ...c.declaration, jobs: c.declaration.jobs.map(job => ({ ...job,
+        grants: { actions: ['block-tool-call'], referenceKinds: ['tool-meta'] } })) }
+      const checked = validateMonitoringModuleDeclaration(declaration, { actions: ['block-tool-call'], referenceKinds: ['tool-meta'] })
+      const config = parseMonitoringConfiguration({ contractVersion: 1, source: { kind: 'host-events', scope: 'host-supplied-events' }, goal: 'g', receiver: 'r', modules: [{ id: 'review.unsupported', version: '1', settings: {} }] })
+      expect(() => prepareMonitoringBindings(config, { modules: { 'review.unsupported': { ...c.binding,
+        declaration: checked.declaration, build() { factories++; throw new Error('must not run') } } },
+        capabilities: host.adapter.capabilities, allowedSourceScopes: ['host-supplied-events'], maxModules: 1 })).toThrow('review.unsupported unsupported')
+      expect(factories).toBe(0)
       expect(c.models.calls).toHaveLength(0)
-    } finally { detach(); await c.close() }
+    } finally { await c.close() }
   })
   test('control/unknown raw watch hooks pass declaration vocabulary but cannot construct selection', () => {
     const models = scriptedModels()
