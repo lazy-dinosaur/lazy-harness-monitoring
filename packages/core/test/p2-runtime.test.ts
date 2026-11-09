@@ -118,11 +118,11 @@ test('budget per-run and kind ceilings cannot widen in handler code', async () =
   try { expect((await h.fire('a'))[0]).toMatchObject({ status: 'uncertain', reason: 'budget_per_run_exceeded:workerDispatches' }); await h.r.idle(); expect(h.reports).toEqual([]) }
   finally { h.r.dispose() }
 })
-test('FINDING: untyped worker result with unsupported status reaches outcome and report', async () => {
+test('untyped worker result with unsupported status is uncertain without a report or retry', async () => {
   const port = createInMemoryWorkerPort<WorkerJobRequest, JobResult>(() => ({ status: 'invalid-status', report: { text: 'invalid result' } }) as unknown as JobResult)
   const h = runtime({ run: () => ({ status: 'prepared' }) }, { workerPort: port })
   try {
-    expect((await h.fire('a'))[0]).toMatchObject({ status: 'invalid-status', reported: true })
-    expect(h.reports).toHaveLength(1); expect((await h.fire('a'))[0]!.reason).toBe('duplicate:invalid-status')
+    expect((await h.fire('a'))[0]).toMatchObject({ status: 'uncertain', reason: 'malformed_worker_result', reported: false })
+    expect(h.reports).toHaveLength(0); expect((await h.fire('a'))[0]!.reason).toBe('duplicate:uncertain')
   } finally { h.r.dispose(); await h.r.idle() }
 })
