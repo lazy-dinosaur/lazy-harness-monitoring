@@ -4,7 +4,8 @@
 // enforces the ENGINE RULES that are not module options: loop guard, idempotency, user-approved budget gate before
 // any job that declares cost, uncertain effect = terminal stop (never retried), risk-tier output limits, report mode.
 import { assertMonitoringWatchable, resolveMonitoringWatch } from '../sdk/trigger-points.ts'
-import { RuntimeWorkQueue } from './runtime-work-queue.ts'
+import { createInMemoryWorkerPort } from '../sdk/worker-execution-memory.ts'
+import type { WorkerExecutionPort, WorkerExecutionLimits, WorkerCompletion } from '../sdk/worker-execution.ts'
 import { canonicalJsonHash } from '../sdk/canonical-json.ts'
 import type { MonitoringEffectiveJob, MonitoringModuleDeclaration } from '../sdk/declaration.ts'
 import type { RealtimeWatchModule } from './monitoring-core-realtime-selection.ts'
@@ -17,6 +18,15 @@ export type BudgetLease = Readonly<{ consume(kind: CostKind, amount: number): vo
 export type JobContext = Readonly<{ trigger: Trigger; job: MonitoringEffectiveJob; lease?: BudgetLease; signal: AbortSignal }>
 export type JobResult = Readonly<{ status: 'executed' | 'proposed' | 'prepared' | 'rejected' | 'unknown'; effectId?: string; report?: Readonly<{ text: string }>; output?: unknown }>
 export type JobHandler = Readonly<{ run(context: JobContext): JobResult | Promise<JobResult>; idempotencyKey?(trigger: Trigger): string | undefined }>
+export type WorkerJobRequest = Readonly<{ handlerId: string; context: Omit<JobContext, 'signal'> }>
+/** Compatibility adapter: trusted existing handlers run through the same worker port contract. */
+export function createHandlerWorkerPort(handlers: Readonly<Record<string, JobHandler>>, limits: Partial<WorkerExecutionLimits> = {}): WorkerExecutionPort<WorkerJobRequest, JobResult> {
+  return createInMemoryWorkerPort((request: WorkerJobRequest, signal) => {
+    const handler = handlers[request.handlerId]
+    if (!handler) throw new Error('worker handler unavailable')
+    return handler.run(Object.freeze({ ...request.context, signal }))
+  }, limits)
+}
 export type Report = Readonly<{ moduleId: string; jobId: string; eventId: string; sessionId: string; mode: 'always' | 'on-result'; text: string; riskTier: string }>
 export type ReportEnqueueReceipt = Readonly<{ reportId: string; status: 'enqueued' | 'failed' | 'unknown'; reason?: string }>
 export type ReportDeliveryReceipt = Readonly<{ reportId: string; status: 'delivered'; boundary: 'context_with_system' }>
@@ -77,7 +87,7 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
   getStatus() { return { keys: this.m.size, maxKeys: this.maxKeys } }
 }
 
-export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): ReportEnqueueReceipt; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number; maxOutcomes?: number }>
+export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): ReportEnqueueReceipt; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number; maxOutcomes?: number; workerPort?: WorkerExecutionPort<WorkerJobRequest, JobResult> }>
 
 export class MonitoringModuleRuntime {
   private readonly modules = new Map<string, RegisteredModule>()
@@ -85,14 +95,17 @@ export class MonitoringModuleRuntime {
   private readonly outcomeLog: JobOutcome[] = []
   private outcomesEvicted = 0
   get outcomes(): readonly JobOutcome[] { return Object.freeze([...this.outcomeLog]) }
-  private readonly work: RuntimeWorkQueue
+  private readonly work: WorkerExecutionPort<WorkerJobRequest, JobResult>
   constructor(private readonly options: RuntimeOptions) {
     if (!Number.isSafeInteger(options.maxOutcomes ?? 256) || (options.maxOutcomes ?? 256) < 1) throw new Error('invalid outcome retention')
-    this.work = new RuntimeWorkQueue({ ...(options.maxActive !== undefined ? { maxActive: options.maxActive } : {}), ...(options.maxQueued !== undefined ? { maxQueued: options.maxQueued } : {}), ...(options.maxWork !== undefined ? { maxWork: options.maxWork } : {}), ...(options.jobTimeoutMs !== undefined ? { timeoutMs: options.jobTimeoutMs } : {}) })
+    const limits = { ...(options.maxActive !== undefined ? { maxActive: options.maxActive } : {}), ...(options.maxQueued !== undefined ? { maxQueued: options.maxQueued } : {}), ...(options.maxWork !== undefined ? { maxWork: options.maxWork } : {}), ...(options.jobTimeoutMs !== undefined ? { timeoutMs: options.jobTimeoutMs } : {}) }
+    if (Object.entries(limits).some(([key, n]) => !Number.isSafeInteger(n) || n < (key === 'maxQueued' ? 0 : 1)) || (limits.timeoutMs ?? 1) > 2147483647) throw new Error('invalid runtime work limits')
+    if (options.workerPort && Object.entries(limits).some(([key, n]) => options.workerPort!.limits[key as keyof WorkerExecutionLimits] > n)) throw new Error('worker port exceeds runtime limits')
+    this.work = options.workerPort ?? createHandlerWorkerPort(options.handlers, limits)
     for (const m of options.modules) {
       assertMonitoringWatchable(m.declaration.watch.events)
       if (this.modules.has(m.moduleId)) throw new Error('duplicate runtime module')
-      for (const j of m.jobs) if (j.enabled && typeof options.handlers[`${m.moduleId}.${j.id}`]?.run !== 'function') throw new Error(`missing job handler ${m.moduleId}.${j.id}`)
+      for (const j of m.jobs) if (j.enabled && !options.workerPort && typeof options.handlers[`${m.moduleId}.${j.id}`]?.run !== 'function') throw new Error(`missing job handler ${m.moduleId}.${j.id}`)
       this.modules.set(m.moduleId, m)
     }
     this.store = options.idempotency ?? new MemoryIdempotencyStore()
@@ -125,7 +138,7 @@ export class MonitoringModuleRuntime {
     if (trigger.origin && (trigger.origin.moduleId === m.moduleId || trigger.origin.depth >= (this.options.maxOriginDepth ?? 1))) return skip('loop_guard')
     const handler = this.options.handlers[`${m.moduleId}.${job.id}`]!
     const idem = job.declared.idempotency
-    const material = idem === 'per-event' ? trigger.eventId : idem === 'per-subject' ? trigger.subjectKey : handler.idempotencyKey?.(trigger)
+    const material = idem === 'per-event' ? trigger.eventId : idem === 'per-subject' ? trigger.subjectKey : handler?.idempotencyKey?.(trigger)
     if (!material) return skip(`idempotency_key_missing:${idem}`)
     const key = canonicalJsonHash([m.moduleId, m.declarationHash, job.id, idem, material])
     const prior = this.store.get(key)
@@ -137,7 +150,13 @@ export class MonitoringModuleRuntime {
       lease = r.lease
     }
     try { this.store.put(key, 'started') } catch { lease?.settle(); return skip('idempotency_capacity', key) }
-    const completion = await this.work.execute(signal => handler.run(Object.freeze({ trigger, job, ...(lease ? { lease } : {}), signal })), parent, () => lease?.settle())
+    let completion: WorkerCompletion<JobResult>
+    try {
+      const ticket = this.work.begin({ handlerId: `${m.moduleId}.${job.id}`, context: Object.freeze({ trigger, job, ...(lease ? { lease } : {}) }) }, { signal: parent })
+      // Logical timeout must not release a budget reservation. Raw acknowledgement owns settlement.
+      void this.work.settled(ticket).then(() => lease?.settle(), () => { /* Unknown raw state: retain reservation. */ })
+      completion = await this.work.wait(ticket)
+    } catch { completion = { status: 'failed', certainty: 'uncertain', reason: 'worker_port_failed' } }
     if (completion.status === 'refused' || (completion.status === 'cancelled' && completion.certainty === 'terminal')) {
       this.store.put(key, 'rejected'); return skip(completion.reason, key)
     }

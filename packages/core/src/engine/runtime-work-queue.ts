@@ -1,6 +1,6 @@
 // Module-owned in-process scheduling mechanics. Logical cancellation is NOT physical termination.
-export type WorkLimits = Readonly<{ maxActive: number; maxQueued: number; maxWork: number; timeoutMs: number }>
-export type WorkResult<T> = Readonly<{ status: 'completed'; value: T }> | Readonly<{ status: 'failed' | 'timed-out' | 'cancelled' | 'refused'; certainty: 'terminal' | 'uncertain'; reason: string }>
+import type { WorkerExecutionLimits as WorkLimits, WorkerCompletion as WorkResult } from '../sdk/worker-execution.ts'
+export type { WorkerExecutionLimits as WorkLimits, WorkerCompletion as WorkResult } from '../sdk/worker-execution.ts'
 type Entry<T> = { task(signal: AbortSignal): T | Promise<T>; controller: AbortController; finish(result: WorkResult<T>): void; rawDone(): void; started: boolean; terminal: boolean; parent: AbortSignal; abort(): void; timer?: ReturnType<typeof setTimeout> }
 export class RuntimeWorkQueue {
   readonly limits: WorkLimits
@@ -63,7 +63,7 @@ export class RuntimeWorkQueue {
     }, this.limits.timeoutMs)
     let raw: Promise<T>
     try { raw = Promise.resolve(e.task(e.controller.signal)) } catch (error) { raw = Promise.reject(error) }
-    void raw.then(value => e.finish({ status: 'completed', value }), error => e.finish({ status: 'failed', certainty: 'uncertain', reason: error instanceof Error && /^budget_[a-z_]+:(judgeCalls|workerDispatches|sdkCalls|embeddingCalls|usd)$/.test(error.message) ? error.message : 'handler_failed' })).finally(() => {
+    void raw.then(value => e.finish({ status: 'completed', certainty: 'terminal', value }), error => e.finish({ status: 'failed', certainty: 'uncertain', reason: error instanceof Error && /^budget_[a-z_]+:(judgeCalls|workerDispatches|sdkCalls|embeddingCalls|usd)$/.test(error.message) ? error.message : 'handler_failed' })).finally(() => {
       // A timeout never releases raw capacity or reservations. Only physical settlement does.
       e.rawDone(); this.active.delete(e)
       while (this.state === 'running' && this.active.size < this.limits.maxActive && this.waiting.length) this.begin(this.waiting.shift()!)
