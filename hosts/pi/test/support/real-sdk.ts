@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   createAgentSession, AgentSessionRuntime, DefaultResourceLoader, ModelRuntime,
-  SessionManager, SettingsManager, type ExtensionFactory,
+  SessionManager, SettingsManager, type ExtensionFactory, type ExtensionUIContext,
 } from '@earendil-works/pi-coding-agent'
 import { PiMonitoringObserver, createPiObservationExtension, observationEvents } from '../../src/index.ts'
 import type { ObservationLimits } from '../../src/index.ts'
@@ -22,11 +22,17 @@ export type HookSample = { event: string; ms: number }
 export async function realSdk(options: {
   enabled?: boolean; observer?: PiMonitoringObserver; limits?: Partial<ObservationLimits>; benchmarkDisabled?: boolean
   extensions?: ExtensionFactory[]; toolThrows?: boolean
+  uiSelect?: ExtensionUIContext['select']; warming?: boolean
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'monitoring-p3-sdk-'))
   const faux = fauxApi.fauxProvider({ provider: 'qualification-faux', tokensPerSecond: Infinity, tokenSize: { min: 1000, max: 1000 },
     models: [{ id: 'fixture', reasoning: true, contextWindow: 32768, maxTokens: 2048 },
       { id: 'alternate', reasoning: true, contextWindow: 32768, maxTokens: 2048 }] })
+  if (options.warming) for (const model of faux.models) {
+    // Synthetic cache lifetime/prices only; no external provider or paid request.
+    model.promptCache = { short: 11, long: 11 }
+    model.cost = { input: 1000, output: 1, cacheRead: 1, cacheWrite: 1000 }
+  }
   const modelRuntime = await ModelRuntime.create({ credentials: new ai.InMemoryCredentialStore(),
     modelsPath: null, modelsStorePath: join(dir, 'catalog.json'), refreshOnCreate: false, allowModelNetwork: false })
   modelRuntime.registerNativeProvider(faux.provider)
@@ -69,7 +75,8 @@ export async function realSdk(options: {
           if (options.toolThrows) throw new Error('synthetic-tool-error')
           return { content: [{ type: 'text', text: `synthetic-result:${params.value}` }], details: {} }
         } }] })
-    await result.session.bindExtensions({ mode: 'print', onError: error => { errors.push(error) } })
+    await result.session.bindExtensions({ mode: 'print', onError: error => { errors.push(error) },
+      ...(options.uiSelect ? { uiContext: { ...result.session.extensionRunner.getUIContext(), select: options.uiSelect } } : {}) })
     return { ...result, services, diagnostics: [] }
   }
   const initial = await make(SessionManager.inMemory(dir))

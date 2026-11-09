@@ -2,12 +2,12 @@
 
 ## Decision and scope
 
-**Partial qualification; P3 exit is NOT met.** The tested next-input path works with the real Pi SDK 1.5.0 and its official faux provider. Late worker branch/source freshness is not automatic, seven declared events remain unsupported by this qualification, and five legacy pending files remain excluded. These are not live-use acceptance results.
+**Partial qualification; complete P3 exit is still NOT claimed.** Approved F1–F4 fixes now guard late-worker scope and selected-source freshness in the explicit handoff composition, label hook-boundary receipts, and declare only real-SDK-proven events. Five legacy pending files remain excluded. This is Pi SDK 1.5.0 faux-provider qualification, not live-use acceptance or a shipped turnkey scheduler. See **Implemented fixes** for commits, tests, API compatibility and resolver obligations.
 
 - Starting revision: `50b3263` (`qualification/p1`); working branch: `qualification/p3`.
 - SDK: `@earendil-works/pi-coding-agent` **1.5.0**, exact `hosts/pi` devDependency, also `*` peerDependency. No other manifest dependency changes.
 - Runtime observed: Bun 1.3.14, Linux x64. No claim for Node, other Bun versions, other SDK versions, TUI, RPC transport, or another host.
-- No edits to `packages/core/src`, `hosts/pi/src`, existing enabled tests, or shared qualification documents. No implementation of P1 proposed deltas 4, 5, 10, or 11.
+- The original review made no runtime-source edits. Approved option-A F1–F4 fixes below change only the required core/Pi contracts, host composition, proving tests and this phase document. P1 proposed deltas 4, 5, 10, 11 and R7 persistence are NOT implemented.
 - Acceptance numbers remain provisional. No semantic accuracy, paid inference, live session, or production activation claim.
 - SDK README, SDK guide, extension event/context documentation, public declarations, extension example, and faux-provider declarations were inspected. The fixture does not import private SDK paths.
 
@@ -58,10 +58,10 @@ The positive trace is:
 | Late selection invalidated by input/tree/compact/session changes | Four parameterized `real-sdk-pipeline.test.ts` tests | Verified before worker handoff |
 | Already-enqueued report stale session/branch/source, age/carry limits | Six `SDK queued report rejected after ... change` tests | Verified; source protection requires caller-supplied dependencies |
 | Late worker old-session report | `real-sdk-late-worker.test.ts`: `SDK late worker report with old session identity...` | Refused by session scope |
-| Late worker branch/source freshness | Three `FINDING:` tests below | NOT automatic; P3 release gate blocked |
+| Late worker branch/source freshness | `real-sdk-pipeline.test.ts` tree refusal; `real-sdk-late-worker.test.ts` canonical edit refusal and controls | Verified for captured scope and selected canonical user-text dependencies; caller must capture before dispatch and supply a live resolver |
 | Max carry one turn, first-request delivery, exactly once | `SDK inject-context delivers...`, zero-carry refusal, duplicate/foreign refusal | Verified for listed cases |
 | Item count/text-byte bounds | `SDK carry item/text bounds refuse before injection` | Verified before injection |
-| Full-provider receipt despite later extension transform | `real-sdk-boundaries.test.ts`: `FINDING: hook-delivered receipt...` | Not promised; receipt boundary is only hook output |
+| Receipt kind and later extension stripping | `real-sdk-boundaries.test.ts`: `SDK stripped report has hook-boundary receipt only...` | Explicit `kind: hook-boundary`; exactly once at hook output, not provider acknowledgement |
 
 ## Pending-test dispositions
 
@@ -106,18 +106,19 @@ Evidence keys:
 - **L**: `real-sdk.test.ts`, `SDK replacement and shutdown...` (actual new-session replacement and runtime disposal).
 - **T**: `real-sdk.test.ts`, `SDK context edits, tree navigation, compaction, model and thinking changes...`.
 - **D**: `real-sdk.test.ts`, report delivery and six stale/limit refusals; full path in `real-sdk-pipeline.test.ts`.
+- **E**: `real-sdk-event-probes.test.ts`, actual runtime fork, cancelled manual compaction, SDK-wrapped pending selector, and SDK cache scheduler with synthetic faux cache metadata. No direct synthetic event emits are used.
 
-| Declared event/action | SDK 1.5.0 | Positive test | Negative evidence / limit |
+| Event/action (removed declarations explicitly marked) | SDK 1.5.0 | Positive test | Negative evidence / limit |
 |---|---|---|---|
 | `session_start` | V | I | Default-off/attach-order controls |
 | `session_shutdown` | V | L | Old diagnostic lease is invalidated |
 | `session_before_switch` | V, replacement trace | L | Default-off/attach-order controls; no resume-file claim |
-| `session_before_fork` | Unsupported | UNVERIFIED | No real fork case |
+| `session_before_fork` | V | E: native entry fork via `AgentSessionRuntime.fork` | Old session identity and new session replacement asserted |
 | `session_before_tree` | V, transition trace | T | Queued-report/late-selection tree refusals |
-| `session_tree` | V | T | Queued-report tree refusal; late-worker finding remains |
+| `session_tree` | V | T | Queued-report and captured late-worker tree refusals |
 | `session_before_compact` | V, compaction trace | T | Late-selection invalidation |
 | `session_compact` | V | T | Queued-report compact refusal |
-| `session_compact_failed` | Unsupported | UNVERIFIED | Failed compaction not exercised |
+| `session_compact_failed` | V, manual cancellation | E | Aborted/manual flags, no summary request; other failure modes UNVERIFIED |
 | `input` | V | I, steer/follow-up tests | Actual handled input; skip/defer |
 | `message_start` | V | I | Actual handled input suppresses run |
 | `message_update` | V | I | Actual handled input suppresses run |
@@ -128,7 +129,7 @@ Evidence keys:
 | `tool_execution_update` | V | I | Observer omits raw progress body; admitted material is separate |
 | `tool_execution_end` | V | I | Error pair preserves identity |
 | `context` | V | I | Handled input: no model request |
-| `context_with_system` | V | I, D | Later-transform finding prevents final-provider claim |
+| `context_with_system` | V | I, D | Explicit hook-boundary receipt; later transformer can strip output |
 | `turn_start` | V | I | Actual handled input suppresses run |
 | `turn_end` | V | I, native-entry test | Actual handled input suppresses run |
 | `agent_start` | V | I | Actual handled input suppresses run |
@@ -138,18 +139,18 @@ Evidence keys:
 | `thinking_level_select` | V | T | Default-off/attach-order controls |
 | `before_agent_start` | V | I | Observer does not alter prompt |
 | `agent_before_settle` | V | I | Observer returns undefined, no continuation |
-| `user_bash` | Unsupported | UNVERIFIED | No shell action exercised |
+| `user_bash` — REMOVED from declaration | Not proven | E negative: real `executeBash` does not emit this hook | TUI/RPC shell dispatch remains UNVERIFIED; observer may still record it |
 | `session_info_changed` | V | I | Observer returns undefined |
-| `ui_prompt_start` | Unsupported | UNVERIFIED | No interactive UI fixture |
-| `ui_prompt_end` | Unsupported | UNVERIFIED | No interactive UI fixture |
+| `ui_prompt_start` | V, SDK-wrapped selector | E | Pending selector observed before release; no physical TUI claim |
+| `ui_prompt_end` | V, SDK-wrapped selector | E | Start/end ordering and handled-input no-provider control; no physical TUI claim |
 | `before_provider_headers` | V, faux only | I | No real HTTP/credential assertion |
-| `before_provider_request` | Unsupported | UNVERIFIED | Faux inventory does not exercise provider serialization |
+| `before_provider_request` — REMOVED from declaration | Not proven | E negative: actual faux request has no serialized-payload hook | Official faux stream invokes response callbacks but not a payload callback; real provider serialization remains UNVERIFIED |
 | `after_provider_response` | V, faux only | I | No real HTTP response assertion |
-| `cache_warming_decision` | Unsupported | UNVERIFIED | No warming scheduler exercised |
+| `cache_warming_decision` | V, synthetic faux cache metadata | E | Real SDK scheduler; 11-second synthetic TTL, fake prices, stop override, one actual faux request and no refresh; real provider economics UNVERIFIED |
 | `resources_discover` | V | I | Observer does not supply resources |
 | `inject-context` (only declared action) | V, scoped | D and full pipeline chain | Foreign/duplicate/source/branch/session/age/carry/count/text refusal; later transformer may drop output |
 
-`steer` and `block-tool-call` are **not declared actions**. `Pi single declared action excludes steer and block-tool-call` proves support checking refuses them. Observing user steering does not implement either action. Source capability declarations remain unchanged by this review; unsupported rows therefore block an unconditional all-declared-capabilities-qualified claim.
+`steer` and `block-tool-call` are **not declared actions**. `Pi single declared action excludes steer and block-tool-call` proves support checking refuses them. Observing user steering does not implement either action. F4 removes `user_bash` and `before_provider_request` from `piHostCapabilities.events` (**BREAKING** for modules requiring those declarations). The exact 36-event proven set is asserted in `real-sdk-capabilities.test.ts`; the observer/attachment may still record the larger diagnostic vocabulary. No actions were added: `inject-context` remains the only declared action.
 
 ## Incremental synchronous hook overhead observations
 
@@ -187,10 +188,27 @@ Changes below are approved option-A fixes; historical findings/proposals below d
 | Finding | Commit (subject uniquely identifies commit) | Tests / API |
 |---|---|---|
 | F1 | `c3e4e61` — `fix(pi): F1 - retain late-worker origin scope` | Flipped tree-navigation finding into refusal; same-branch full-path control and immutable/foreign origin probe. Added `ParentReportOrigin`, `ParentReportEnqueueMeta`, `captureOrigin()` and optional enqueue origin metadata. Capture before async dispatch; direct enqueue remains immediate-only. No core runtime change. |
-
 | F2 | `c84b0df` — `fix(pi): F2 - guard selected source dependencies` | Flipped canonical-source finding to refusal; full-path dependency identity assertion; SDK post-enqueue replace/omit, unrelated-edit and ambiguous-source controls; four resolver/immutability unit probes in `report-origin.test.ts`. `captureOrigin(dependencies)` copies/freezes selected IDs/versions; new optional `sourceVersion` option must be the mailbox's live resolver. A missing, throwing or mismatched resolver refuses captured dependencies before enqueue. Mailbox rechecks at hook boundary. |
+| F3 | `80493a2` — `fix(pi): F3 - label hook-boundary delivery receipts` | Flipped later-strip finding to exact `kind: 'hook-boundary'` assertion and two-request `[1, 0]` hook consumption proof; provider captures remain empty of stripped material. Positive full pipeline asserts receipt kind separately from actual faux input. **BREAKING for receipt producers:** exported `ReportDeliveryReceipt` now requires `kind: 'hook-boundary'`; existing `status` and `boundary` stay unchanged. No added/removed exports. |
+| F4 | `fix(pi): F4 - declare only SDK-proven events` | Added real-SDK fork, cancelled-compaction, UI start/end and cache-scheduler probes; actual shell/faux request negatives justify removing two unproven declarations. Added exact declared-list assertion. No `FINDING:` capability test existed to flip. Added F2 unit test to the test tsconfig include list so it is also compiler-checked. No unrelated existing test changes. |
 
-| F3 | `fix(pi): F3 - label hook-boundary delivery receipts` | Flipped later-strip finding to exact `kind: 'hook-boundary'` assertion and two-request `[1, 0]` hook consumption proof; provider captures remain empty of stripped material. Positive full pipeline asserts receipt kind separately from actual faux input. **BREAKING for receipt producers:** exported `ReportDeliveryReceipt` now requires `kind: 'hook-boundary'`; existing `status` and `boundary` stay unchanged. No added/removed exports. |
+F4 final local verification (verbatim summary from `bun run test`):
+
+```text
+ 301 pass
+ 0 fail
+ 1927 expect() calls
+Ran 301 tests across 33 files. [5.09s]
+```
+
+All four compilers were run after the F4 changes (verbatim wrapper summaries; compiler output was empty):
+
+```text
+packages/core tsc: exit 0 (no diagnostics)
+hosts/pi tsc: exit 0 (no diagnostics)
+examples/p1 tsc: exit 0 (no diagnostics)
+hosts/pi/test tsc: exit 0 (no diagnostics)
+```
 
 A hook-boundary receipt acknowledges only the adapter's returned `context_with_system` messages. It is not provider-observed, wire delivery, or persistence; no provider-observed receipt API is implemented. Later extensions may remove the material, and the adapter does not retry an already consumed item. Exactly-once applies at the hook boundary. Independently captured faux transcripts are separate qualification evidence.
 
@@ -427,9 +445,9 @@ All commands exited zero. No lockfile changes were needed by the frozen install.
 ## Remaining UNVERIFIED / unsupported
 
 - Five retained pending files' complete protection migration; no all-pending-restored claim.
-- Automatic late-worker branch/source freshness; current behavior is explicitly unsafe for that unconditional claim.
-- Seven unsupported declared events and their lifecycle edge cases; RPC/TUI/real HTTP/provider serialization/cache warming.
+- Unconditional freshness for unscoped async callers or arbitrary material kinds: async callers must capture origin/dependencies before dispatch and use a live native-source resolver. The tested composition binds unique canonical user-text entries; it fails closed for ambiguous bindings. No generic native-source mapper or turnkey runtime is shipped.
+- TUI/RPC `user_bash` and real provider serialization remain UNVERIFIED and undeclared. Physical TUI UI, non-cancellation compaction failures and real provider cache economics remain UNVERIFIED. Selector and synthetic-faux cache-scheduler lifecycle are now proven.
 - Complete synchronous attach/report/core overhead, N-repeated lifecycle overhead, async-only latency, memory and semantic/cost acceptance.
 - A shipped turnkey Pi scheduler/worker integration; explicit test-owned handoff is not product registration.
 - Cross-version/platform compatibility, crash/restart durability, effectful module acceptance, paid/live models and production use.
-- No push or GitHub writes were performed. No runtime source changes were made. This review authorizes no later implementation.
+- No push or GitHub writes were performed. No dependencies were added by F1–F4. No paid model calls or R7 persistence implementation. Earlier verification receipts above are historical; each fix's local results are recorded in Implemented fixes, with final clean-checkout results reported separately.
