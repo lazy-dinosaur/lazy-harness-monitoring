@@ -1,8 +1,8 @@
-# Acceptance criteria — DRAFT FOR USER DECISION
+# Acceptance criteria — provisionally adopted first baseline (user 2026-11-09)
 
-**NOT APPROVED. NOT MEASURED. NO MODULE ACTIVATION / LIVE DATA / PAID CALL AUTHORIZATION.**
+**PROVISIONALLY ADOPTED FIRST BASELINE (user 2026-11-09, D2) so P1 can start. USER RE-CONFIRMATION REQUIRED BEFORE ANY P5 MEASUREMENT. NOT MEASURED. NO MODULE ACTIVATION / LIVE DATA / PAID CALL AUTHORIZATION.**
 
-Baseline source: `8901b9432bde05f26ff64427b078974a0b823881`. Scope: the four [review scenarios](scenarios.md) plus shared core/Pi mechanics. All numeric targets, sample sizes, durations, window settings, confidence levels and stop budgets in this document are **PROPOSALS**, not observed engine performance or universal quality percentages. Issue phase numbers, requirement IDs, metric definitions and units are identifiers/definitions, not acceptance evidence.
+Baseline source: `8901b9432bde05f26ff64427b078974a0b823881`. Scope: the four [review scenarios](scenarios.md) plus shared core/Pi mechanics. All numeric targets, sample sizes, durations, window settings, confidence levels and stop budgets in this document are **provisionally adopted as the first baseline (user 2026-11-09)**, not observed engine performance or universal quality percentages. Re-confirm all numbers with the user before any P5 measurement. Remaining “proposed” labels describe baseline designs/protocols, not measured results or final measurement approval. Issue phase numbers, requirement IDs, metric definitions and units are identifiers/definitions, not acceptance evidence.
 
 No prior semantic-quality, production latency, incremental hook overhead, peak-memory, provider-cost, or placement acceptance evidence was found in this repository. The baseline's passing synthetic CPU tests are prior **mechanical** evidence only; their total runtime is not an end-to-end latency benchmark. Evidence referenced in MIGRATION.md lives outside this repository and was not imported as proof. No proposed number below is calibrated to a local production measurement.
 
@@ -21,7 +21,7 @@ No prior semantic-quality, production latency, incremental hook overhead, peak-m
 
 ## Proposed per-module quality and trigger thresholds
 
-**Every value in this table is a PROPOSAL.** Each row is a separate purpose-specific choice; a confidence score is never the oracle. Proposed initial dev and frozen holdout sizes are per module and do not overlap.
+**Every value in this table is provisionally adopted as the first baseline; re-confirm before P5 measurement.** Each row is a separate purpose-specific choice; a confidence score is never the oracle. Proposed initial dev and frozen holdout sizes are per module and do not overlap.
 
 | Module/scenario | Proposed precision / recall | Proposed false-positive limits (both denominators) | Proposed missed / extra trigger counts | One-line rationale |
 |---|---|---|---|---|
@@ -34,7 +34,7 @@ Proposed gate interpretation: point estimates must meet the table, intervals and
 
 ## Proposed latency, overhead, memory and cost ceilings
 
-**Every number in this table is a PROPOSAL**, including synchronous overhead percentiles. Module incremental memory is measured with only that module enabled; the combined core+Pi run has a separate aggregate bound. Time targets include worker/report receipt at a controlled available boundary; live next-user waiting is censored and separately counted, never passed as zero latency.
+**Every number in this table is provisionally adopted as the first baseline; re-confirm before P5 measurement**, including synchronous overhead percentiles. Module incremental memory is measured with only that module enabled; the combined core+Pi run has a separate aggregate bound. Time targets include worker/report receipt at a controlled available boundary; live next-user waiting is censored and separately counted, never passed as zero latency.
 
 | Owner / scenario | Proposed p50 / p95 end-to-end | Proposed incremental synchronous hook p50 / p95 | Proposed peak memory ceiling | Proposed cost ceiling per 100 triggers | Rationale per resource |
 |---|---|---|---|---|---|
@@ -48,7 +48,7 @@ Each ceiling is proposed for the pinned fixture sizes/environment, not arbitrary
 
 ## Proposed sample size, observation duration and fixture design
 
-**All quantities below are PROPOSALS.** Duration is a minimum window plus coverage requirements, not permission to observe live data. Start with synthetic/consented offline replay; a live pilot needs separate P6 approval.
+**All quantities below are provisionally adopted as the first baseline; re-confirm before P5 measurement.** Duration is a minimum window plus coverage requirements, not permission to observe live data. Start with synthetic/consented offline replay; a live pilot needs separate P6 approval.
 
 | Scope | Proposed development set | Proposed frozen holdout | Proposed duration / repetition | Rationale |
 |---|---|---|---|---|
@@ -65,7 +65,7 @@ Proposed labeling process: **2** independent reviewers per semantic case, disagr
 
 ## Proposed core safety criteria and stop rules
 
-All numeric limits here are **PROPOSALS**; safety policy is subject to user decision, not current production guarantees.
+All numeric limits here are **provisionally adopted as the first baseline**; re-confirm stop rules before P5 measurement. Safety policy remains subject to user confirmation, not current production guarantees.
 
 | Proposed rule / metric | Proposed threshold / stop action | Rationale |
 |---|---|---|
@@ -92,14 +92,14 @@ Restart probes are required even though R7 is currently unsupported: specify whe
 - Mechanical replay uses seeded inputs, controllable clock/IDs and stub outputs; real inference records nondeterminism/provider version and cannot claim byte-identical semantic replay. Independent runner reproduces mechanics and explains semantic differences.
 - Publish only privacy-safe evidence identities, counts, redacted slices and approved artifacts. Raw trace body consent is distinct from permission to inject a report, persist memory, or publish anything.
 
-## Decisions required from the user before measurement / promotion
+## User re-confirmation required before any P5 measurement / promotion
 
-1. Approve/replace each module's precision/recall, both FP denominators/ceilings, exact trigger oracle and treatment of defer/technical/missing receipts; decide point-estimate vs interval-bound gating.
-2. Approve/replace each latency/overhead/memory/cost target, measurement environment, controlled next-call availability and censored-live-wait handling.
-3. Approve/replace per-module sizes/class balance, label/adjudication owners, durations, soak/restart coverage, uncertainty method and pilot minimum/hard cap.
+1. Re-confirm/replace each module's precision/recall, both FP denominators/ceilings, exact trigger oracle and treatment of defer/technical/missing receipts; decide point-estimate vs interval-bound gating.
+2. Re-confirm/replace each latency/overhead/memory/cost target, measurement environment, controlled next-call availability and censored-live-wait handling.
+3. Re-confirm/replace per-module sizes/class balance, label/adjudication owners, durations, soak/restart coverage, uncertainty method and pilot minimum/hard cap.
 4. Decide reference catalog/rule authority, memory read-only boundary/approval semantics, and test-loop normalization/incident window. Approve scenario scope before changing APIs.
-5. Approve safety/resource/privacy stop rules, kill switch/rollback ownership, and what limitations block active use; choose restart/carry/uncertain recovery policy.
+5. Re-confirm safety/resource/privacy stop rules, kill switch/rollback ownership, and what limitations block active use; choose restart/carry/uncertain recovery policy.
 6. Approve data sources, privacy/content retention, dataset/holdout access and contamination/retirement rules. No real session collection is currently authorized.
 7. Separately authorize provider/model identities plus call/USD/time envelopes, or keep all probes stubbed/offline; decide whether any later live shadow/active read-only stage is permitted.
 8. Decide the six pending-test restore/replace/retire proposals; do not waive their protection based solely on passing core counts.
-9. Confirm Pi SDK version/fixture and action capability scope, deferred Fabric dependency placement after P1, and provisional tmux placement vs other deployment options. No cutover/release/push approval is implied.
+9. Confirm Pi SDK version/fixture and action capability scope (currently only `inject-context`), and provisional tmux placement vs other deployment options. **D1 (user 2026-11-09) decides Fabric placement:** issue #1 P3 adds host-side `hosts/pi-fabric` for R4 spawn/run/stop/wait, queueing and concurrency limits, with an EXACT pinned `pi-fabric` dependency and only public `pi-fabric/agents`, `pi-fabric/runners`, optionally `pi-fabric/jev` judgement exports; `packages/core` stays Fabric-free. First connector task: confirm bun loads the pinned exports despite `engines.node >=24`. Fabric resident host/Jev observation are not an event source or delivery guarantee; session persistence is not Fabric's role. RPC daemon remains deferred. This is a decision, not implemented support or cutover/release/push approval.

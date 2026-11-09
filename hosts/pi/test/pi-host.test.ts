@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { PiMonitoringObserver, createPiObservationExtension, attachPiFrames, piHostCapabilities } from '../src/index.ts'
-import { frameSequenceIssues } from '@lazy-harness/monitoring-core/host'
+import { frameSequenceIssues, hostSupportIssues } from '@lazy-harness/monitoring-core/host'
 import { createIndependentSelectionPipelines, type RealtimeWatchModule } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
 import { config, fixture, outputFor } from '../../../packages/core/test/support/model-fixture.ts'
 
@@ -13,8 +13,9 @@ const messages: any[] = []
 const ctx = { sessionManager: { getSessionId: () => 'pi-s', getLeafId: () => 'leaf', getBranch: () => messages.map((_, i) => ({ id: 'e' + i, parentId: i ? 'e' + (i - 1) : null, type: 'message' })), buildSessionProjection: () => ({ messages }) }, getSystemPrompt: () => 'sys' }
 
 describe('Pi host adapter (ADR 0062)', () => {
-  test('declares the full core vocabulary and the Pi actions', () => {
-    expect(piHostCapabilities.hostId).toBe('pi'); expect(piHostCapabilities.actions).toContain('inject-context')
+  test('declares only implemented Pi actions and reports unsupported blocking', () => {
+    expect(piHostCapabilities.hostId).toBe('pi'); expect(piHostCapabilities.actions).toEqual(['inject-context'])
+    expect(hostSupportIssues(piHostCapabilities, [{ id: 'x', watch: ['tool.before'], actions: ['block-tool-call'] }])).toEqual([{ moduleId: 'x', kind: 'action', name: 'block-tool-call' }])
   })
   test('Pi hooks become conformant frames and reach an independent module pipeline', async () => {
     const pi = fakePi(), observer = new PiMonitoringObserver(() => undefined), f = fixture()
