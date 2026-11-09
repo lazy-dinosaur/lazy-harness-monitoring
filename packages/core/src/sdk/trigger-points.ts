@@ -4,6 +4,8 @@
  * name these points in `watch.events` (raw Pi hook names stay accepted for compatibility); configuration data may only
  * select a subset of the declared ones. See `.lazy-harness/planning/monitoring-engine-concept-v2.md` § Stage 3b.
  */
+import { observationEvents } from '../host/frames.ts'
+
 export type MonitoringTriggerFrame = Readonly<{ sourceEvent: string; payload: unknown }>
 type PointSpec = Readonly<{ sourceEvent: string; summary: string; when?: (payload: any) => boolean }>
 
@@ -81,6 +83,23 @@ export const MONITORING_DELIVERY_POINTS = Object.freeze({
 
 export type MonitoringTriggerPoint = keyof typeof MONITORING_TRIGGER_POINTS
 export type MonitoringResolvedWatch = Readonly<{ sourceEvents: readonly string[]; conditional: boolean; matches(frame: MonitoringTriggerFrame): boolean }>
+
+export type MonitoringWatchSupport = 'watchable' | 'delivery-only' | 'control-only' | 'unknown'
+const controlHooks = new Set(['session_start', 'session_shutdown', 'session_before_switch', 'session_before_fork', 'session_before_tree', 'session_tree', 'session_before_compact', 'session_compact', 'session_compact_failed', 'model_select', 'thinking_level_select'])
+/** Resolver predicates are also useful for observation; not every catalog point is a runnable watch. */
+export function monitoringWatchSupport(name: string): MonitoringWatchSupport {
+  if (Object.hasOwn(MONITORING_DELIVERY_POINTS, name) || ['context', 'context_with_system'].includes(name)) return 'delivery-only'
+  const spec = (MONITORING_TRIGGER_POINTS as Record<string, PointSpec>)[name]
+  const hook = Object.hasOwn(MONITORING_TRIGGER_POINTS, name) ? spec!.sourceEvent : name
+  if (name === 'run.aborted' || controlHooks.has(hook)) return 'control-only'
+  return (observationEvents as readonly string[]).includes(hook) ? 'watchable' : 'unknown'
+}
+export function assertMonitoringWatchable(events: readonly string[]): void {
+  for (const name of events) {
+    const support = monitoringWatchSupport(name)
+    if (support !== 'watchable') throw new Error(`${support} watch cannot be judged: ${name}`)
+  }
+}
 
 /** Resolve declared watch names (trigger points or raw hook names) into hooks + a deterministic frame predicate. */
 export function resolveMonitoringWatch(events: readonly string[]): MonitoringResolvedWatch {

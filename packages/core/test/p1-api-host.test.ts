@@ -74,7 +74,7 @@ describe('P1 public API and second-host review', () => {
       expect(c.models.calls).toHaveLength(0)
     } finally { await c.close() }
   })
-  test('control/unknown raw watch hooks pass declaration vocabulary but cannot construct selection', () => {
+  test('control/unknown raw watch hooks are rejected by low-level selection as well as declaration', () => {
     const models = scriptedModels()
     for (const event of ['session_start', 'session_compact', 'session_tree', 'model_select', 'thinking_level_select', 'context', 'context_with_system', 'unknown_hook']) {
       expect(() => createIndependentSelectionPipelines({ enabled: true, material: { allowedKinds: ['event-meta'] },

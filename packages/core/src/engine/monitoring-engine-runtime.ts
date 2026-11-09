@@ -2,7 +2,7 @@
 // Turns a trigger (module matched its purpose + selected evidence) into the module's declared background jobs and
 // enforces the ENGINE RULES that are not module options: loop guard, idempotency, user-approved budget gate before
 // any job that declares cost, uncertain effect = terminal stop (never retried), risk-tier output limits, report mode.
-import { resolveMonitoringWatch } from '../sdk/trigger-points.ts'
+import { assertMonitoringWatchable, resolveMonitoringWatch } from '../sdk/trigger-points.ts'
 import { canonicalJsonHash } from '../sdk/canonical-json.ts'
 import type { MonitoringEffectiveJob, MonitoringModuleDeclaration } from '../sdk/declaration.ts'
 import type { RealtimeWatchModule } from './monitoring-core-realtime-selection.ts'
@@ -61,6 +61,7 @@ export class MonitoringModuleRuntime {
   readonly outcomes: JobOutcome[] = []
   constructor(private readonly options: RuntimeOptions) {
     for (const m of options.modules) {
+      assertMonitoringWatchable(m.declaration.watch.events)
       if (this.modules.has(m.moduleId)) throw new Error('duplicate runtime module')
       for (const j of m.jobs) if (j.enabled && typeof options.handlers[`${m.moduleId}.${j.id}`]?.run !== 'function') throw new Error(`missing job handler ${m.moduleId}.${j.id}`)
       this.modules.set(m.moduleId, m)
@@ -125,6 +126,7 @@ export class MonitoringModuleRuntime {
 export function watchModuleFromDeclaration(moduleId: string, declaration: MonitoringModuleDeclaration, grants: Grants, destination: string, options: { events?: readonly string[] } = {}): RealtimeWatchModule {
   // task154: `watch.events` may name trigger points (hook + deterministic condition); `options.events` is the
   // configuration-selected subset (`effectiveMonitoringWatch`). Conditional points yield a per-module `trigger`.
+  assertMonitoringWatchable(options.events ?? declaration.watch.events)
   const resolved = resolveMonitoringWatch(options.events ?? declaration.watch.events)
   return { id: moduleId, watchEvents: [...resolved.sourceEvents], ...(resolved.conditional ? { trigger: resolved.matches } : {}), referenceKinds: [...declaration.watch.kinds], // The bridge's own hand-off action is engine-owned; module job actions are enforced by the runtime, not the bridge.
     grants: { actions: ['monitoring.selected-material'], referenceKinds: [...grants.referenceKinds] }, question: declaration.purpose.question, destination, includeCurrentMaterial: true, ...(declaration.needs?.some(n => n.adapter === 'judge.view') ? { includeJudgeView: true } : {}), ...(declaration.needs?.some(n => n.adapter === 'region.compact') ? { compactRegion: true } : {}) }

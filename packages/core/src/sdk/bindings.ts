@@ -1,3 +1,4 @@
+import { assertMonitoringWatchable } from './trigger-points.ts'
 import { hostSupportIssues, validateHostCapabilities, type HostCapabilities } from '../host/contract.ts'
 import type { Static, TSchema } from 'typebox'
 import Value from 'typebox/value'
@@ -68,6 +69,7 @@ export function prepareMonitoringBindings(config: MonitoringConfiguration, host:
   for (const { request, binding, jobs, watch } of entries) {
     const requirements = binding.declaration ? { events: watch!, actions: jobs!.filter(j => j.enabled).flatMap(j => j.declared.grants.actions) } : binding.hostRequirements
     if (!requirements) configurationFailure('HOST_UNSUPPORTED', '/modules', `Module ${request.id.slice(0, 80)} capability requirements missing`)
+    try { assertMonitoringWatchable(requirements.events) } catch (e) { configurationFailure('UNSUPPORTED_EVENT', '/modules', `Module ${request.id.slice(0, 80)}: ${(e as Error).message.slice(0, 200)}`) }
     const actions = requirements.actions.filter(a => a !== 'monitoring.selected-material' && !(host.internalActions?.includes(a) && !hostActions.has(a)))
     const issues = hostSupportIssues(capabilities, [{ id: request.id, watch: requirements.events, actions }])
     if (issues.length) configurationFailure('HOST_UNSUPPORTED', '/modules', issues.slice(0, 32).map(i => `Module ${i.moduleId.slice(0, 80)} unsupported ${i.kind}: ${i.name.slice(0, 80)}`).join('; '))

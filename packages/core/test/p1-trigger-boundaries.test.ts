@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
-  MONITORING_TRIGGER_POINTS, MONITORING_DELIVERY_POINTS, resolveMonitoringWatch,
+  MONITORING_TRIGGER_POINTS, MONITORING_DELIVERY_POINTS, resolveMonitoringWatch, monitoringWatchSupport, assertMonitoringWatchable,
   validateMonitoringModuleDeclaration, effectiveMonitoringWatch, effectiveMonitoringJobs,
   effectiveMonitoringStage, MonitoringConfigurationError, type MonitoringModuleDeclaration,
 } from '@lazy-harness/monitoring-core'
@@ -110,7 +110,20 @@ describe('P1 declaration/config boundaries', () => {
       expect(() => validateMonitoringModuleDeclaration(reviewDeclaration(events), grants)).toThrow(MonitoringConfigurationError)
     }
     for (const name of ['unknown_hook', 'context', 'context_with_system']) {
-      expect(validateMonitoringModuleDeclaration(reviewDeclaration([name]), grants).declaration.watch.events).toEqual([name])
+      expect(() => validateMonitoringModuleDeclaration(reviewDeclaration([name]), grants)).toThrow(MonitoringConfigurationError)
+    }
+  })
+  test('every named and raw point has explicit watch admission, including aborted runs', () => {
+    const controls = new Set(['run.aborted', 'session.start', 'session.compact', 'session.tree', 'model.changed', 'model.thinking-changed'])
+    for (const [point, hook] of points) {
+      expect(monitoringWatchSupport(point)).toBe(controls.has(point) ? 'control-only' : 'watchable')
+      if (controls.has(point)) expect(() => validateMonitoringModuleDeclaration(reviewDeclaration([point]), grants)).toThrow(point)
+      else expect(validateMonitoringModuleDeclaration(reviewDeclaration([point]), grants).declaration.watch.events).toEqual([point])
+      if (['session_start', 'session_compact', 'session_tree', 'model_select', 'thinking_level_select'].includes(hook)) expect(() => assertMonitoringWatchable([hook])).toThrow(hook)
+      else expect(() => assertMonitoringWatchable([hook])).not.toThrow()
+    }
+    for (const name of ['model.before-call', 'context', 'context_with_system', 'unknown_hook', 'unknown.point', 'session_shutdown', 'session_before_fork', 'session_before_switch', 'session_before_compact', 'session_compact_failed', 'session_before_tree']) {
+      expect(() => validateMonitoringModuleDeclaration(reviewDeclaration([name]), grants)).toThrow(name)
     }
   })
   test('configuration selects literal names only, may empty, cannot widen to raw equivalent', () => {
