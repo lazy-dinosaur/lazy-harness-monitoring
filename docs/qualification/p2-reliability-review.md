@@ -16,15 +16,53 @@ P2-F2 API: no exports added/removed, no type signatures changed. **BREAKING resu
 
 P2-F1 local verification: `bun run test` — 362 pass, 0 fail, 2173 assertions across 29 files. `bunx tsc -p packages/core/tsconfig.json`, `bunx tsc -p hosts/pi/tsconfig.json`, and `bunx tsc -p examples/p1/tsconfig.json` each exited 0 without compiler output. `hosts/pi/test/tsconfig.json` does not exist. Initial new pipeline assertions used the wrong fixture property (`requests` instead of `calls`); corrected before this passing full run. No other pre-existing test changed.
 
-Public API: added `parseObservationFrame(input: unknown): ObservationFrame` through `/host` (and `host/frames.ts`). It uses the existing bounded plain-JSON parser and returns a frozen copy. Malformed frames stop coordinator/pipeline as `malformed` (technical admission failure), before preparation, material capture or judgement; valid unavailable snapshots remain observable without preparation. **BREAKING for malformed/untyped adapters:** missing/wrong snapshot fields and undeclared structural keys now reject instead of being prepared. No exported frame type changed.
+Public API: added `parseObservationFrame(input: unknown): ObservationFrame` through the existing `/host` export (implemented in `packages/core/src/host/frames.ts`; no direct frame subpath export). It uses the existing bounded plain-JSON parser and returns a frozen copy. Malformed frames stop coordinator/pipeline as `malformed` (technical admission failure), before preparation, material capture or judgement; valid unavailable snapshots remain observable without preparation. **BREAKING for malformed/untyped adapters:** missing/wrong snapshot fields and undeclared structural keys now reject instead of being prepared. No exported frame type changed.
 
-P2-F3 → `fix(mailbox): P2-F3 - isolate source lookup failures` (this fix commit) → flipped the throwing-source witness in `p2-mailbox.test.ts`, added four cases for first/middle/last fault placement and a failing later dependency. A failed source lookup drops that item, records `source_check_failed` in the existing bounded trace, preserves its seen identity, and continues the healthy items in insertion order. Recovery of the source callback cannot redeliver the dropped item. Healthy later admissions still work subject to the existing seen capacity.
+P2-F3 → `2d2cd4d` — `fix(mailbox): P2-F3 - isolate source lookup failures` → flipped the throwing-source witness in `p2-mailbox.test.ts`, added four cases for first/middle/last fault placement and a failing later dependency. A failed source lookup drops that item, records `source_check_failed` in the existing bounded trace, preserves its seen identity, and continues the healthy items in insertion order. Recovery of the source callback cannot redeliver the dropped item. Healthy later admissions still work subject to the existing seen capacity.
 
 P2-F3 local verification: targeted mailbox tests — 12 pass, 0 fail, 99 assertions; `bun run test` — 406 pass, 0 fail, 2389 assertions across 30 files. All three typechecks exited 0 without compiler output; the optional test tsconfig remains absent. No pre-existing test changed except the required finding witness.
 
 P2-F3 API: no exports added/removed; `CarryTrace.reason` gains `source_check_failed`. **BREAKING for exhaustive reason consumers / exception-dependent callers:** source callback errors no longer escape `take`; a failed item is dropped rather than left pending, while its deduplication protection remains. No new persistence or delivery capability is claimed.
 
 Capability matrix: unchanged; Pi still declares only `inject-context`, snapshot mode `tail`. No new actions, dependencies, registrations, configuration keys, worker features or persistence capabilities.
+
+### Fix verification receipts
+
+Final source-changing commit: `2d2cd4d93f2e274a4d65fa70efe0342e5edb80e0`. Each finding commit passed `bun run test` and the three existing typechecks before commit; commands and finite counts are recorded above. No dependencies, manifests, lockfile, shared capability matrix, or protected backup were changed. A restricted-literal scan over all changed files returned no matches. No push, GitHub write, paid model call or real provider experiment was performed.
+
+Local `bun run test` summary, verbatim:
+
+```text
+ 406 pass
+ 0 fail
+ 2389 expect() calls
+Ran 406 tests across 30 files. [3.16s]
+```
+
+A unique detached worktree was created with `git worktree add --detach /tmp/monitoring-p2-clean-<unique> HEAD`. There, `bun install --frozen-lockfile`, `bun run test`, and all existing requested typechecks ran. Receipt, verbatim:
+
+```text
+CHECKOUT 2d2cd4d93f2e274a4d65fa70efe0342e5edb80e0
+bun install v1.3.14 (0d9b296a)
+
++ @types/bun@1.4.4
++ typescript@7.0.2
+
+16 packages installed [28.00ms]
+
+ 406 pass
+ 0 fail
+ 2389 expect() calls
+Ran 406 tests across 30 files. [3.09s]
+packages/core: exit 0 (no compiler output)
+hosts/pi: exit 0 (no compiler output)
+examples/p1: exit 0 (no compiler output)
+hosts/pi/test/tsconfig.json: absent
+checkout status: clean
+verification_exit=0 cleanup_exit=0
+```
+
+The temporary worktree was removed. The following report-only commit does not change executable code; its final-HEAD recheck is reported separately by the worker. **Remaining UNVERIFIED:** real SDK/provider delivery, external worker hard termination, adversarial proxy behavior, unbounded fault combinations, heap/soak/performance/quality measurements, and all R7 restart durability. The three findings are fixed for the finite tested data/callback fault cases, not a new universal safety or persistence claim. Pi capabilities remain unchanged.
 
 ## Scope and gate decision (historical review)
 
