@@ -15,9 +15,17 @@ TypeScript, Fabric-independent (ADR 0061 in lazy-harness); boundaries stay langu
 
 The core never imports a host. It defines the **Host Adapter contract** (`packages/core/src/host`): the frame vocabulary
 and `ObservationFrame`, `HostCapabilities` (events emitted, actions such as inject-context / steer / block-tool-call,
-snapshot depth), `hostSupportIssues` (modules needing an unsupported trigger point or action are refused, not silently
-idle) and `frameSequenceIssues` (conformance every adapter passes). Pipelines take frames through `accept(frame)`.
+snapshot depth), `hostSupportIssues` (reports unsupported trigger points/actions; current startup does not enforce
+refusal — see the P1 review) and `frameSequenceIssues` (conformance every adapter passes). Pipelines take frames through `accept(frame)`.
 
 Modules: `references` (U1), `rule-steering` (U6), `memory` (new). Data (traces, feedback marks, gold sets) is kept per module.
 
 Records (design, decisions, measurements) stay in the lazy-harness repository under `.lazy-harness/`; see `MIGRATION.md`.
+
+## Qualification reviews
+
+- [Qualification index (issue #1, P0/P1)](docs/qualification/README.md)
+- [P1 API/condition review and proposed deltas](docs/qualification/p1-api-condition-review.md)
+- [Offline public-API examples and reproduction](examples/p1/README.md)
+
+These are scoped review fixtures, not live-use approval or SDK qualification.

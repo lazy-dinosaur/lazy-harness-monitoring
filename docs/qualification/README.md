@@ -1,4 +1,4 @@
-# Qualification review — issue #1, phase P0
+# Qualification review — issue #1, phases P0/P1
 
 Frozen source/test review baseline: **`8901b9432bde05f26ff64427b078974a0b823881`** (`8901b94`). Documentation branch: `qualification/p0`. This directory is an audit and decision package, not source implementation, activation approval, SDK qualification or release readiness.
 
@@ -10,6 +10,14 @@ Frozen source/test review baseline: **`8901b9432bde05f26ff64427b078974a0b823881`
 | [requirements-matrix.md](requirements-matrix.md) | R1–R10 plus every P1–P7 checklist proof obligation: owner, exact symbol/test, evidence/proposed artifact, scoped status |
 | [scenarios.md](scenarios.md) | Four review fixtures: references, rule advice, private read-only memory candidate and non-knowledge repeated-test-failure advice; expressibility limits |
 | [acceptance-criteria.draft.md](acceptance-criteria.draft.md) | **PROVISIONALLY ADOPTED FIRST BASELINE (user 2026-11-09)**: metrics/thresholds, denominators, sample sizes, durations, split protocol and stop rules; re-confirm before P5 measurement; not measured |
+
+## P1 review receipt and next gate
+
+- [p1-api-condition-review.md](p1-api-condition-review.md): all 29 conditions, raw/config/delivery boundaries, public export coverage, four scenario receipts, synthetic second-host probe, findings and **11 PROPOSED deltas** (none implemented).
+- [Runnable offline examples](../../examples/p1/README.md): public-export consumers, explicit existing-package link setup (no install), scripted judge/worker outputs.
+- Added tests: `packages/core/test/p1-trigger-boundaries.test.ts`, `p1-scenarios.test.ts`, `p1-api-host.test.ts`. Existing source/tests are unchanged in P1.
+- Exact scoped command: `bun test packages/core/test hosts/pi/test/pi-host.test.ts` → **223 pass / 0 fail, 1263 expect() calls, 223 tests across 18 files**. All three `bunx tsc -p` invocations (core, Pi, examples) exited 0 with no diagnostics; full summary is in the P1 review.
+- This confirms bounded local expressibility and current defects, not safety closure. Unsupported-startup admission, malformed trigger acceptance, runtime lifecycle/retention and report receipt gaps need approval/implementation before the relevant P2/P3 qualification gates. D1/D2 remain in force; no real SDK/model/paid/live/semantic qualification claim.
 
 ## P0 exit criterion and present gate
 
