@@ -17,7 +17,7 @@ Frozen source/test review baseline: **`8901b9432bde05f26ff64427b078974a0b823881`
 - [Runnable offline examples](../../examples/p1/README.md): public-export consumers, explicit existing-package link setup (no install), scripted judge/worker outputs.
 - Added tests: `packages/core/test/p1-trigger-boundaries.test.ts`, `p1-scenarios.test.ts`, `p1-api-host.test.ts`. Existing source/tests are unchanged in P1.
 - Exact scoped command: `bun test packages/core/test hosts/pi/test/pi-host.test.ts` → **223 pass / 0 fail, 1263 expect() calls, 223 tests across 18 files**. All three `bunx tsc -p` invocations (core, Pi, examples) exited 0 with no diagnostics; full summary is in the P1 review.
-- This confirms bounded local expressibility and current defects, not safety closure. Unsupported-startup admission, malformed trigger acceptance, runtime lifecycle/retention and report receipt gaps need approval/implementation before the relevant P2/P3 qualification gates. D1/D2 remain in force; no real SDK/model/paid/live/semantic qualification claim.
+- This confirms bounded local expressibility and current defects, not safety closure. Unsupported-startup admission, malformed trigger acceptance, runtime lifecycle/retention and report receipt gaps need approval/implementation before the relevant P2/P3 qualification gates. D1'/D2 remain in force; no real SDK/model/paid/live/semantic qualification claim.
 
 ## P0 exit criterion and present gate
 
