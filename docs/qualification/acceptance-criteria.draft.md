@@ -1,0 +1,105 @@
+# Acceptance criteria — DRAFT FOR USER DECISION
+
+**NOT APPROVED. NOT MEASURED. NO MODULE ACTIVATION / LIVE DATA / PAID CALL AUTHORIZATION.**
+
+Baseline source: `8901b9432bde05f26ff64427b078974a0b823881`. Scope: the four [review scenarios](scenarios.md) plus shared core/Pi mechanics. All numeric targets, sample sizes, durations, window settings, confidence levels and stop budgets in this document are **PROPOSALS**, not observed engine performance or universal quality percentages. Issue phase numbers, requirement IDs, metric definitions and units are identifiers/definitions, not acceptance evidence.
+
+No prior semantic-quality, production latency, incremental hook overhead, peak-memory, provider-cost, or placement acceptance evidence was found in this repository. The baseline's passing synthetic CPU tests are prior **mechanical** evidence only; their total runtime is not an end-to-end latency benchmark. Evidence referenced in MIGRATION.md lives outside this repository and was not imported as proof. No proposed number below is calibrated to a local production measurement.
+
+## Measurement definitions (proposed protocol)
+
+- **Unit:** one module decision opportunity with fixed source/frame/window identity, independently labeled before observing the candidate's decision. A module not admitted because of a wrong condition is still an opportunity when the oracle expected it; do not shrink denominators to dispatched jobs.
+- **Positive** means an independently adjudicated useful and allowed recommendation/candidate is warranted at that opportunity. `TP` = correctly proposed positive; `FP` = emitted positive on labeled negative; `FN` = missed labeled positive; `TN` = correctly silent negative. Technical failure/skip/defer on a clear positive counts as FN, not disappearance. Label genuinely unresolved cases separately and report their defer/incorrect-run outcomes; do not silently add them to easy negatives.
+- **Precision** = TP / (TP + FP). Its false-positive denominator is **all emitted positive recommendations/candidates**, so the complementary false-discovery fraction is FP / (TP + FP). **False-positive rate (FPR)** = FP / (FP + TN), explicitly over **all independently labeled negative opportunities**, including non-alerts. Report both; do not call them the same percentage. Undefined denominators yield `n/a`, not a perfect score.
+- **Recall** = TP / (TP + FN), over all labeled positives including missing admission/material/delivery. Separately report proposal-level and **actually received** useful-report recall; a prepared packet with no expected receipt is not delivered success. Memory candidate recall is over review-candidate receipts, not parent injection or knowledge writes.
+- **Trigger accounting:** independently enumerate expected eligible `(module, point, source logical event)` pairs before replay. Missed = expected pairs never admitted; extra = actual admissions not in that set, including progress/final duplicates. Report counts plus denominators; separate intentionally out-of-scope raw hooks and unavailable observations. Semantic TP/FP is separate from deterministic trigger-count correctness.
+- **End-to-end latency:** monotonic time from eligible captured event to independently observed expected output receipt (parent's actual model input for reporting modules; private candidate receipt for memory). Report capture→judge, judge→worker, worker→ready, ready→eligible model hook separately. Do not wait forever for a next user prompt and omit those cases: record censored/no-boundary cases and carry/drop reason. Quantile targets below apply to a controlled fixture with a prompt/model-call boundary made available; live boundary wait is separately reported.
+- **Incremental synchronous hook overhead:** matched enabled-minus-disabled hook-return elapsed time under identical fake/stubbed and actual-SDK traces, measured per hook; exclude asynchronously awaited model work. Report p50/p95 and worst hook by event/snapshot size; no subtraction across unrelated sessions. File trace sink/snapshot costs belong in the enabled path when configured.
+- **Memory:** peak process RSS and incremental RSS over matched disabled Pi baseline, plus retained object/queue counts after drain. Record sampling interval, warm-up, host versions and event/material sizes. RSS is not only JS heap; compare on the same machine/config. An occasional high-water mark is not a leak proof.
+- **Cost per 100 triggers:** total attributable judge + worker + SDK/embedding provider charges / all eligible module trigger opportunities × 100, including failures/retries/compaction calls. Also report total USD, attempted/actual calls, token usage, and cost per emitted/received useful result. No undispatched opportunity is removed to improve cost. Estimates/reservations must be distinguished from actual bills; stub costs are simulated, not observed provider spend.
+- **Quality oracle:** blinded independent labels and human adjudication, not confidence/probability. Keep all failures and ambiguous cases; report per-slice counts, exact material selection and wrong-source/wrong-rule errors. Proposed uncertainty reporting: **95%** Wilson intervals for precision/recall/FPR and bootstrap quantile intervals; rationale: expose finite-sample uncertainty rather than just point estimates. These methods/level require user acceptance; small negative slices cannot establish rare-error safety.
+
+## Proposed per-module quality and trigger thresholds
+
+**Every value in this table is a PROPOSAL.** Each row is a separate purpose-specific choice; a confidence score is never the oracle. Proposed initial dev and frozen holdout sizes are per module and do not overlap.
+
+| Module/scenario | Proposed precision / recall | Proposed false-positive limits (both denominators) | Proposed missed / extra trigger counts | One-line rationale |
+|---|---|---|---|---|
+| `review.references` (A) | precision ≥ **0.95**, recall ≥ **0.85** | FP/(TP+FP) ≤ **0.05**; FP/(FP+TN) ≤ **0.05** | **0 missed / 0 extra** deterministic pairs in holdout | Irrelevant context is costly to parent attention; allow some conservative semantic misses but no unexplained mechanical admission loss. |
+| `review.rules` (B), advisory only | precision ≥ **0.98**, recall ≥ **0.80** | FP/(TP+FP) ≤ **0.02**; FP/(FP+TN) ≤ **0.02** | **0 missed / 0 extra** deterministic pairs in holdout | Incorrect corrections are disruptive, so prioritize precise citations over broad recall; no threshold authorizes blocking. |
+| `review.memory-candidate` (C), private read-only | precision ≥ **0.97**, recall ≥ **0.75** | FP/(TP+FP) ≤ **0.03**; FP/(FP+TN) ≤ **0.03** | **0 missed / 0 extra** deterministic pairs in holdout | Persistent-memory pollution risk warrants conservative candidates even though this fixture writes nothing. |
+| `review.test-loop` (D), advisory only | precision ≥ **0.95**, recall ≥ **0.90** | FP/(TP+FP) ≤ **0.05**; FP/(FP+TN) ≤ **0.05** | **0 missed / 0 extra** deterministic pairs in holdout | Avoid nagging during useful retries while reliably surfacing genuine unproductive loops. |
+
+Proposed gate interpretation: point estimates must meet the table, intervals and raw denominators must be published, and insufficient evidence or unresolved labeling blocks acceptance rather than rounding to pass. Whether to require interval lower bounds to clear the targets is a **user decision**; no rare-event reliability is established by these proposed sizes. Any wrong-source/unauthorized/stale/duplicate actual effect is a safety stop independent of semantic aggregate scores.
+
+## Proposed latency, overhead, memory and cost ceilings
+
+**Every number in this table is a PROPOSAL**, including synchronous overhead percentiles. Module incremental memory is measured with only that module enabled; the combined core+Pi run has a separate aggregate bound. Time targets include worker/report receipt at a controlled available boundary; live next-user waiting is censored and separately counted, never passed as zero latency.
+
+| Owner / scenario | Proposed p50 / p95 end-to-end | Proposed incremental synchronous hook p50 / p95 | Proposed peak memory ceiling | Proposed cost ceiling per 100 triggers | Rationale per resource |
+|---|---|---|---|---|---|
+| A references | **1 s / 4 s** | **0.5 ms / 2 ms** | incremental RSS **32 MiB** | **USD 0.50** | Retrieval should be available before the next useful boundary; hook work must stay small; document windows should fit modest memory; template output keeps cost mostly judgement. |
+| B rule advice | **2 s / 6 s** | **0.5 ms / 2 ms** | incremental RSS **48 MiB** | **USD 1.00** | Allow a bounded worker while avoiding retrospective advice arriving too late; hooks stay non-blocking; worker state needs more room; advice accuracy may justify higher but capped cost. |
+| C memory candidate | **3 s / 10 s** | **0.5 ms / 2 ms** | incremental RSS **32 MiB** | **USD 0.50** | Private candidate preparation is less urgent; still no foreground blocking; bounded history/subject state; no persistence worker spend justified yet. |
+| D test-loop advice | **0.5 s / 2 s** | **0.5 ms / 2 ms** | incremental RSS **16 MiB** | **USD 0.20** | Repetition detection is small, timely and non-knowledge-specific; keep reducer/hook/memory footprint and classifier cost especially low. |
+| core + Pi, stubbed mechanical path | **10 ms / 50 ms** | **0.5 ms / 2 ms** | combined incremental RSS **128 MiB**, absolute peak RSS **512 MiB** | actual external provider spend **USD 0** | With no model/network delay, latency should mostly reflect scheduling/projection; aggregate independent pipelines must stay bounded; the mechanical gate must be offline. |
+
+Each ceiling is proposed for the pinned fixture sizes/environment, not arbitrary unbounded host transcripts or a universal production SLA. Record hardware/toolchain/SDK/provider/model/config fingerprints before measurement. Determine actual maximum snapshot/material sizes from the admitted configuration; do not quietly reduce input sizes to pass a resource gate. Combined real-provider cost must also stay inside the separately approved total envelope below, not merely each normalized module ceiling.
+
+## Proposed sample size, observation duration and fixture design
+
+**All quantities below are PROPOSALS.** Duration is a minimum window plus coverage requirements, not permission to observe live data. Start with synthetic/consented offline replay; a live pilot needs separate P6 approval.
+
+| Scope | Proposed development set | Proposed frozen holdout | Proposed duration / repetition | Rationale |
+|---|---|---|---|---|
+| A references | **200** labeled opportunities | **200** fresh opportunities: **80 positive / 100 negative / 20 unresolved** | **2** offline measurement days; controlled timing repeated over all holdout opportunities | Covers clear, absent and ambiguous requests; enough negatives to expose common irrelevant-reference noise, not rare safety events. |
+| B rule advice | **250** labeled opportunities | **250** fresh opportunities: **100 positive / 125 negative / 25 unresolved** | **3** offline days; include finalized/provisional and tool/assistant slices | Broader negative review is needed for disruptive incorrect correction. |
+| C memory candidate | **200** labeled opportunities | **200** fresh opportunities: **60 positive / 120 negative / 20 unresolved** | **3** offline days with repeated-subject/conflict/restart slices | More transient negatives than durable decisions reflect the intended conservative read-only gate. |
+| D test-loop advice | **200** labeled opportunities | **200** fresh opportunities: **80 positive / 100 negative / 20 unresolved** | **2** offline days; include useful-retry, progress/final and command-correlation slices | Tests temporal behavior and a non-knowledge task without large inference expense. |
+| core + Pi offline safety | **1,000** development fault sequences | **1,000** fresh seeded holdout sequences, plus **10,000** eligible hook samples for overhead | **60 min** mixed-module soak plus **10** restart/cleanup fault cycles | Stress raw-drain/retention/identity behavior and quantify overhead tails while keeping the gate bounded and reproducible. |
+| separately approved P6 shadow pilot | no tuning on live acceptance data | at least **500** eligible triggers, with at least **50** labeled positives per enabled module | at least **7 days**, hard cap **14 days** | Observe ordinary terminal detach/reattach and usage variation; stop inconclusive at the hard cap rather than silently extending data/budget collection. |
+
+Proposed extra fixture definition for D: **3** distinct finalized failures of the same normalized test command within **10 min** without a meaningful source revision change defines an incident; rationale: distinguish persistent loops from a normal first retry. The user must approve normalization and “meaningful change” labels; this is not a core operator or measured best window. Keep the counting reducer bounded and test progress/final dedup and scope reset.
+
+Proposed labeling process: **2** independent reviewers per semantic case, disagreement adjudicated by a separate reviewer before opening holdout outputs; rationale: reduce a single annotator's bias without using model confidence. Record unresolved cases and disagreement counts, not forced agreement. Proposed memory sampling cadence **1 s** during soak plus process high-water observation; rationale: tractable longitudinal evidence, with the explicit limitation that subsecond peaks may be missed.
+
+## Proposed core safety criteria and stop rules
+
+All numeric limits here are **PROPOSALS**; safety policy is subject to user decision, not current production guarantees.
+
+| Proposed rule / metric | Proposed threshold / stop action | Rationale |
+|---|---|---|
+| Core mechanical precision/recall over expected dispatch/report receipts | **1.00 / 1.00**, FPR **0**, FP/(TP+FP) **0**, **0** missed and **0** extra expected deterministic triggers | Mechanics have an exact offline oracle, unlike semantic inference; any explained intentional rejection must be represented in that oracle before freeze. |
+| Duplicate, unauthorized, stale or uncertain-auto-retried effect/report | Stop on **1** independently witnessed violation; no active escalation until root cause and fresh evidence | Aggregate semantic metrics must not hide safety failures. |
+| Secret/private body outside granted and consented boundary | Stop on **1** leak; quarantine evidence and redact before sharing | Privacy is not averaged over triggers; never publish raw real conversations or credentials to GitHub. |
+| Unexplained declared event loss/order break | Stop on **1** unexplained gap, preserve receipt and classify omission vs engine loss | “No loss” needs a raw host ledger; known bounded/unavailable behavior must be visible, not silently ignored. |
+| Raw work ownership / queue stability | **0** freed physical slots before settlement; **0** late effects after cancellation; retained/queue counts stay within documented admitted caps | Cooperative cancellation cannot be relabeled hard cancellation, and noncooperative jobs must remain accounted for. |
+| Memory soak | No unbounded retained collection; proposed post-drain incremental RSS growth ≤ **8 MiB** between matched first/last **10 min** windows, while staying within peak ceilings | Growth trend can expose the currently unbounded histories; GC variance makes this a proposed diagnostic, not a mathematical leak proof. |
+| Timing / resource ceiling | Stop a mechanical run on first deterministic cap violation; for statistical p95 ceiling, pause after **2** consecutive matched batches exceed it | Hard bounds should fail immediately; timing sampling noise deserves explicit confirmation rather than arbitrary reruns. |
+| Uncooperative worker | Stop new admission at configured deadline; retain raw slot/accounting; terminate the controlled fixture at proposed **60 s** drain ceiling and mark failure/incomplete | Prevent indefinite qualification hangs without claiming the library killed raw work. |
+| Paid semantic envelope (only after explicit provider approval) | Proposed **USD 10 total per module**, **USD 30 combined run**, **1,000** calls/module and **2 h** wall time, whichever is hit first | Bound cost and exposure; a stop is inconclusive/fail, not acceptance. No approval is granted by listing the envelope. |
+| Pilot kill switch / rollback | Proposed disable-admission + no new reports within **1 s** of switch; raw work remains observed until settlement | A responsive stop is needed for live use; this does not promise force-kill of uncooperative adapters. |
+| Quality gate failure or sample/time/cost exhaustion | Stop escalation, preserve failures, report `failed` or `insufficient evidence`; no automatic extra sampling or active stage | Avoid turning exhausted budget or weak evidence into success. |
+
+Restart probes are required even though R7 is currently unsupported: specify whether recovery reconciles uncertain effects or drops pending read-only carry, and test the approved semantics. Pi inside tmux may keep a process alive when its terminal closes but cannot satisfy restart criteria. Deployment placement and durability are separate decisions.
+
+## Development / frozen holdout separation (proposed process)
+
+- Version and hash source traces, label files, source/provenance revisions, split manifest, question/declaration/config/model/adapter identities and baseline commit. Group related sessions, repeated commands and paraphrases on the same side to avoid cross-split leakage.
+- Only development examples may inform prompt/condition/material/budget tuning. Freeze candidate, thresholds, dataset membership, labeling policy and stop rules before the holdout runner gets outputs. Keep gold labels in an evaluator-only store; neither prompt state nor module materials receive labels.
+- Holdout is independently curated and access-controlled. The worker/tuner sees aggregate approved results only after the run; preserve every failure plus censored/missing/technical cases. Compare one bounded factor at a time on dev and record provenance of the change.
+- If any holdout example/error slice informs tuning, retire that entire affected acceptance set into development and obtain a fresh independent holdout. Do not rerun unchanged passing checks to collect a nicer number; a changed candidate gets a new identified run and contamination review.
+- Mechanical replay uses seeded inputs, controllable clock/IDs and stub outputs; real inference records nondeterminism/provider version and cannot claim byte-identical semantic replay. Independent runner reproduces mechanics and explains semantic differences.
+- Publish only privacy-safe evidence identities, counts, redacted slices and approved artifacts. Raw trace body consent is distinct from permission to inject a report, persist memory, or publish anything.
+
+## Decisions required from the user before measurement / promotion
+
+1. Approve/replace each module's precision/recall, both FP denominators/ceilings, exact trigger oracle and treatment of defer/technical/missing receipts; decide point-estimate vs interval-bound gating.
+2. Approve/replace each latency/overhead/memory/cost target, measurement environment, controlled next-call availability and censored-live-wait handling.
+3. Approve/replace per-module sizes/class balance, label/adjudication owners, durations, soak/restart coverage, uncertainty method and pilot minimum/hard cap.
+4. Decide reference catalog/rule authority, memory read-only boundary/approval semantics, and test-loop normalization/incident window. Approve scenario scope before changing APIs.
+5. Approve safety/resource/privacy stop rules, kill switch/rollback ownership, and what limitations block active use; choose restart/carry/uncertain recovery policy.
+6. Approve data sources, privacy/content retention, dataset/holdout access and contamination/retirement rules. No real session collection is currently authorized.
+7. Separately authorize provider/model identities plus call/USD/time envelopes, or keep all probes stubbed/offline; decide whether any later live shadow/active read-only stage is permitted.
+8. Decide the six pending-test restore/replace/retire proposals; do not waive their protection based solely on passing core counts.
+9. Confirm Pi SDK version/fixture and action capability scope, deferred Fabric dependency placement after P1, and provisional tmux placement vs other deployment options. No cutover/release/push approval is implied.
