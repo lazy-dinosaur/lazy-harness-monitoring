@@ -186,7 +186,13 @@ Changes below are approved option-A fixes; historical findings/proposals below d
 
 | Finding | Commit (subject uniquely identifies commit) | Tests / API |
 |---|---|---|
-| F1 | `fix(pi): F1 - retain late-worker origin scope` | Flipped tree-navigation finding into refusal; same-branch full-path control and immutable/foreign origin probe. Added `ParentReportOrigin`, `ParentReportEnqueueMeta`, `captureOrigin()` and optional enqueue origin metadata. Capture before async dispatch; direct enqueue remains immediate-only. No core runtime change. |
+| F1 | `c3e4e61` — `fix(pi): F1 - retain late-worker origin scope` | Flipped tree-navigation finding into refusal; same-branch full-path control and immutable/foreign origin probe. Added `ParentReportOrigin`, `ParentReportEnqueueMeta`, `captureOrigin()` and optional enqueue origin metadata. Capture before async dispatch; direct enqueue remains immediate-only. No core runtime change. |
+
+| F2 | `fix(pi): F2 - guard selected source dependencies` | Flipped canonical-source finding to refusal; full-path dependency identity assertion; SDK post-enqueue replace/omit, unrelated-edit and ambiguous-source controls; four resolver/immutability unit probes in `report-origin.test.ts`. `captureOrigin(dependencies)` copies/freezes selected IDs/versions; new optional `sourceVersion` option must be the mailbox's live resolver. A missing, throwing or mismatched resolver refuses captured dependencies before enqueue. Mailbox rechecks at hook boundary. |
+
+The test-owned composition binds selected user-text material IDs to unique native projection entries; the resolver reads `buildSessionProjection().entries` on every check and compares the actual projected source contribution. Ambiguous/unavailable bindings fail closed. This fixture proves canonical user-text edits, not a shipped generic native-source mapper for all material kinds. Production callers must supply equally live source ownership. No constant-version source resolver is used in this composition.
+
+F2 local verification: `bun run test` — 295 pass, 0 fail, 1881 assertions, 32 files; all four tsc commands exited 0 with no diagnostics. The existing positive pipeline test gained exact dependency assertions; no unrelated pre-existing test changed.
 
 F1 local verification: `bun run test` — 287 pass, 0 fail, 1842 assertions, 31 files. All four reproduction tsc commands exited 0 with no diagnostics. No unrelated pre-existing test changed.
 

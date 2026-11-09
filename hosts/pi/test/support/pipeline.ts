@@ -1,8 +1,8 @@
-import { defineMonitoringModule, effectiveMonitoringJobs, createInMemoryWorkerPort, type WorkerJobRequest } from '@lazy-harness/monitoring-core'
+import { defineMonitoringModule, effectiveMonitoringJobs, createInMemoryWorkerPort, canonicalJsonHash, type WorkerJobRequest } from '@lazy-harness/monitoring-core'
 import { ApprovedBudgetGate, MonitoringModuleRuntime, watchModuleFromDeclaration, type JobResult, type Report } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 import { createIndependentSelectionPipelines, type RealtimeSelectionPacket } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
 import { scriptedModels, question } from '../../../../examples/p1/support.ts'
-import { attachPiFrames, createParentReportDelivery, PiMonitoringObserver, type ParentReportOrigin } from '../../src/index.ts'
+import { attachPiFrames, createParentReportDelivery, PiMonitoringObserver, visibleMessage, type ParentReportOrigin } from '../../src/index.ts'
 import { ContextCarryMailbox } from '@lazy-harness/monitoring-core/engine/monitoring-core-context-mailbox.ts'
 import { realSdk } from './real-sdk.ts'
 
@@ -26,8 +26,17 @@ export async function pipelineFixture(options: {
   const set = createIndependentSelectionPipelines({ enabled: true,
     material: { allowedKinds: kinds }, selection: { modules: [watch], modelConfig: models.config, modelHost: models.host,
       goal: 'Synthetic P3 pipeline qualification', isPermitted: () => true } })
-  const mailbox = new ContextCarryMailbox({ maxAgeMs: 10000, maxCarryTurns: 1, maxItems: 8, maxTextBytes: 4096, sourceVersion: () => 'v1' })
-  const delivery = createParentReportDelivery({ mailbox }), reports: Report[] = [], calls: WorkerJobRequest[] = []
+  // Test-owned native-source binding. Only uniquely resolvable canonical user text is admitted.
+  // Material-window versions alone cannot detect SDK context edits between hooks.
+  const sources = new Map<string, { entryId: string; canonicalVersion: string; materialVersion: string }>()
+  const sourceVersion = (id: string): string | undefined => {
+    const source = sources.get(id)
+    if (!source) return undefined
+    const entry = f.session.sessionManager.buildSessionProjection().entries.find(e => e.sourceEntry.id === source.entryId)
+    return entry && canonicalJsonHash(entry.messages.map(visibleMessage)) === source.canonicalVersion ? source.materialVersion : undefined
+  }
+  const mailbox = new ContextCarryMailbox({ maxAgeMs: 10000, maxCarryTurns: 1, maxItems: 8, maxTextBytes: 4096, sourceVersion })
+  const delivery = createParentReportDelivery({ mailbox, sourceVersion }), reports: Report[] = [], calls: WorkerJobRequest[] = []
   const origins = new Map<string, ParentReportOrigin>()
   const port = createInMemoryWorkerPort<WorkerJobRequest, JobResult>((request, signal) => {
     calls.push(request)
@@ -36,7 +45,12 @@ export async function pipelineFixture(options: {
   const runtime = new MonitoringModuleRuntime({ modules: [{ moduleId: 'p3', declaration: binding.declaration!,
     declarationHash: binding.declarationHash!, jobs: effectiveMonitoringJobs(binding.declaration!, undefined, '/jobs')! }],
     budget: new ApprovedBudgetGate(), handlers: {}, workerPort: port,
-    report: report => { reports.push(report); return delivery.enqueue(report, { origin: origins.get(report.eventId)! }) } })
+    report: report => {
+      reports.push(report)
+      const origin = origins.get(report.eventId)
+      if (!origin) throw new Error('missing report origin')
+      return delivery.enqueue(report, { origin })
+    } })
   const observer = new PiMonitoringObserver(() => undefined)
   const f = await realSdk({ observer, extensions: [pi => { attachPiFrames(pi as any, observer, set) }, delivery.extension] })
   const packets: RealtimeSelectionPacket[] = []
@@ -46,7 +60,14 @@ export async function pipelineFixture(options: {
       if (!offer.isCurrent()) continue
       for (const packet of (offer.candidate.payload as any).packets as RealtimeSelectionPacket[]) {
         packets.push(packet)
-        origins.set(packet.eventId, delivery.captureOrigin())
+        for (const material of packet.materials) {
+          const matches = f.session.sessionManager.buildSessionProjection().entries.filter(e => e.messages.some((m: any) => {
+            const text = typeof m.content === 'string' ? m.content : Array.isArray(m.content) ? m.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n') : undefined
+            return material.kind === 'user-text' && m.role === 'user' && text === material.text
+          }))
+          if (matches.length === 1) sources.set(material.id, { entryId: matches[0]!.sourceEntry.id, canonicalVersion: canonicalJsonHash(matches[0]!.messages.map(visibleMessage)), materialVersion: material.version })
+        }
+        origins.set(packet.eventId, delivery.captureOrigin(packet.materials.map(({ id, version }) => ({ id, version }))))
         try {
           await runtime.onTrigger({ moduleId: packet.moduleId, eventId: packet.eventId,
             sessionId: f.session.sessionManager.getSessionId(), evidence: packet.materials.map(m => ({ id: m.id, kind: m.kind, version: m.version, text: m.text })) })

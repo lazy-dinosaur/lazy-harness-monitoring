@@ -5,9 +5,9 @@ import { ContextCarryMailbox, type CarryDependency, type CarryDelivery, type Car
 import { monitoringReportId, type Report, type ReportEnqueueReceipt, type ReportDeliveryReceipt } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 
 /** Capture before dispatching asynchronous work; branchId is an adapter-owned navigation generation. */
-export type ParentReportOrigin = CarryScope
+export type ParentReportOrigin = CarryScope & Readonly<{ dependencies: readonly CarryDependency[] }>
 export type ParentReportEnqueueMeta = Readonly<{ origin?: ParentReportOrigin; originTurn?: number; dependencies?: readonly CarryDependency[] }>
-export type ParentReportDeliveryOptions = Readonly<{ mailbox: ContextCarryMailbox; now?: () => number; maxDelivered?: number }>
+export type ParentReportDeliveryOptions = Readonly<{ mailbox: ContextCarryMailbox; now?: () => number; maxDelivered?: number; /** Use the same live resolver as the mailbox. Missing/throwing resolvers fail closed for captured dependencies. */ sourceVersion?: (id: string) => string | undefined }>
 export function createParentReportDelivery(options: ParentReportDeliveryOptions) {
   const maxDelivered = options.maxDelivered ?? 256
   if (!Number.isSafeInteger(maxDelivered) || maxDelivered < 1) throw new Error('invalid delivered retention')
@@ -17,9 +17,10 @@ export function createParentReportDelivery(options: ParentReportDeliveryOptions)
   const installed = new WeakSet<object>(), delivered: CarryDelivery[] = []
   const scope = (t = turn) => ({ sessionId: sessionId!, branchId: `branch:${branch}`, turn: t })
   const origins = new WeakSet<ParentReportOrigin>()
-  const captureOrigin = (): ParentReportOrigin => {
+  const captureOrigin = (dependencies: readonly CarryDependency[] = []): ParentReportOrigin => {
     if (!sessionId) throw new Error('no active session')
-    const origin = Object.freeze(scope())
+    if (dependencies.some(d => !d.id || !d.version)) throw new Error('invalid source dependency')
+    const origin = Object.freeze({ ...scope(), dependencies: Object.freeze(dependencies.map(d => Object.freeze({ id: d.id, version: d.version }))) })
     origins.add(origin)
     return origin
   }
@@ -29,7 +30,12 @@ export function createParentReportDelivery(options: ParentReportDeliveryOptions)
     const captured = meta.origin
     if (captured && (!origins.has(captured) || captured.sessionId !== sessionId || captured.branchId !== scope().branchId || captured.turn > turn)) return { reportId, status: 'failed', reason: 'scope_mismatch' }
     const origin = captured?.turn ?? meta.originTurn ?? turn
-    const dependencies = [...(meta.dependencies ?? [])].sort((a, b) => a.id.localeCompare(b.id) || a.version.localeCompare(b.version))
+    const dependencies = [...(captured?.dependencies ?? []), ...(meta.dependencies ?? [])].sort((a, b) => a.id.localeCompare(b.id) || a.version.localeCompare(b.version))
+    if (captured?.dependencies.length) {
+      try {
+        if (captured.dependencies.some(d => options.sourceVersion?.(d.id) !== d.version)) return { reportId, status: 'failed', reason: 'source_changed' }
+      } catch { return { reportId, status: 'failed', reason: 'source_unavailable' } }
+    }
     const id = canonicalJsonHash([reportId, scope().sessionId, scope().branchId, dependencies])
     const accepted = options.mailbox.put({ id, reportId, moduleId: report.moduleId, scope: scope(origin), createdAt: now(), dependencies,
       text: `[monitor ${report.moduleId}/${report.jobId}] ${report.text}` }, now())
