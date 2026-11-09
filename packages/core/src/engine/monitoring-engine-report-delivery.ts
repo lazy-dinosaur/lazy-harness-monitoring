@@ -1,0 +1,37 @@
+// Parent report delivery (S6). Wires runtime reports (jobs whose report mode is always/on-result) into the main
+// agent's model input through the existing ContextCarryMailbox policy: same turn if another request follows,
+// otherwise once at the next turn's first request with an origin/age label; scope or source changes drop it.
+// Turn boundaries come from `input` events; a tree/branch change starts a new branch scope. No text classification.
+import { ContextCarryMailbox, type CarryDependency, type CarryDelivery } from './monitoring-core-context-mailbox.ts'
+import type { Report } from './monitoring-engine-runtime.ts'
+
+export type ParentReportDeliveryOptions = Readonly<{ mailbox: ContextCarryMailbox; now?: () => number }>
+export function createParentReportDelivery(options: ParentReportDeliveryOptions) {
+  const now = options.now ?? (() => Date.now())
+  let sessionId: string | undefined, turn = 0, branch = 0, firstRequest = true, seq = 0
+  const delivered: CarryDelivery[] = []
+  const scope = (t = turn) => ({ sessionId: sessionId!, branchId: `branch:${branch}`, turn: t })
+  return Object.freeze({
+    /** Current turn number; capture it when a trigger is created so a late report keeps its origin turn. */
+    currentTurn: () => turn,
+    onReport(report: Report, meta: Readonly<{ originTurn?: number; dependencies?: readonly CarryDependency[] }> = {}): boolean {
+      if (!sessionId || report.sessionId !== sessionId) return false
+      const origin = meta.originTurn ?? turn
+      return options.mailbox.put({ id: `${report.moduleId}.${report.jobId}:${report.eventId}:${++seq}`, moduleId: report.moduleId, scope: scope(origin), createdAt: now(), dependencies: meta.dependencies ?? [], text: `[monitor ${report.moduleId}/${report.jobId}] ${report.text}` }, now())
+    },
+    extension(pi: { on(name: string, handler: (event: any, ctx: any) => unknown): unknown }) {
+      pi.on('session_start', (_e, ctx) => { sessionId = ctx.sessionManager.getSessionId(); turn = 0; firstRequest = true })
+      pi.on('input', (_e, ctx) => { sessionId ??= ctx.sessionManager.getSessionId(); turn++; firstRequest = true; return undefined })
+      for (const name of ['session_tree', 'session_compact']) pi.on(name, () => { branch++ })
+      pi.on('context_with_system', (e, ctx) => {
+        if (!sessionId || ctx.sessionManager.getSessionId() !== sessionId) return undefined
+        const out = options.mailbox.take(scope(), now(), firstRequest)
+        firstRequest = false
+        if (!out.length) return undefined
+        delivered.push(...out)
+        return { messages: [...e.messages, ...out.map(d => ({ role: 'user', content: [{ type: 'text', text: d.text }], timestamp: Date.now() }))] }
+      })
+    },
+    get delivered(): readonly CarryDelivery[] { return Object.freeze([...delivered]) },
+  })
+}

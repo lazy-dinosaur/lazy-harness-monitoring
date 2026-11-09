@@ -2,5 +2,13 @@
   "name": "@lazy-harness/monitoring-core",
   "version": "0.0.0",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "typebox": "*"
+  },
+  "exports": {
+    ".": "./src/sdk/index.ts",
+    "./engine/*": "./src/engine/*",
+    "./observer": "./src/observer/monitoring-observer.ts"
+  }
 }
