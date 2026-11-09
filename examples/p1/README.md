@@ -19,19 +19,18 @@ an unapproved/unwritten candidate with report never; it is not an escalation of 
 The test-loop reducer is bounded fixture code, not a generic condition DSL or meaningful-edit oracle.
 `api-consumer.ts` also verifies public Pi exports, legacy generated types and configured processor API.
 
-## Run from repository root, no installs
+## Run from repository root
 
 ```sh
-bun examples/p1/prepare-local-links.ts
+bun install --frozen-lockfile
 bun test packages/core/test/p1-trigger-boundaries.test.ts packages/core/test/p1-scenarios.test.ts packages/core/test/p1-api-host.test.ts
 bunx tsc -p examples/p1/tsconfig.json
 ```
 
-Dependencies must already be installed as in P0. Examples are not a workspace: the preparation
-script creates three ignored `node_modules` symlinks to already-present **package roots**
-(core, Pi, TypeBox). It checks existing targets and does not download/install, edit manifests/locks,
-or bypass export maps with source aliases. Core test compilation transitively checks the examples;
-the new tsconfig also includes them directly and inherits unchanged strict/noEmit settings.
+`examples/p1` is a private workspace. The normal root install resolves its declared core, Pi and
+TypeBox dependencies through package exports, without source aliases or a separate setup step.
+TypeBox uses the same version spec as core. Core test compilation transitively checks the examples;
+the example tsconfig also includes them directly and inherits unchanged strict/noEmit settings.
 
 The scripted decision can be `run`, `skip` or `defer`; the rule worker can deliberately fail.
 See `packages/core/test/p1-scenarios.test.ts` for actual invocations and negative assertions.

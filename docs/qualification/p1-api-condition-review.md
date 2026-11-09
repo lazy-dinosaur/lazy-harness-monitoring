@@ -2,21 +2,21 @@
 
 ## Scope, decision and reproduction
 
-Historical review base: `qualification/p0` at `1d921b2`; P0 boundary correction is `6eae938`, and the original P1 review rebased to `12afe20`. The approved follow-up on `qualification/p1` implements deltas **1, 2, 3, 6, 7, 8, 9, 12** below. Original condition/API/scenario tables and F1–F11 findings are preserved as **historical preimplementation evidence**, including their original line citations and wrong-behavior witnesses; they are not current invariant claims. The Implemented section is authoritative for current behavior and test titles. Deltas 4, 5, 10, 11 remain proposals. Examples and new tests use public package exports; engine export paths include `.ts`. Clean-install/registry packaging remains UNVERIFIED.
+Historical review base: `qualification/p0` at `1d921b2`; P0 boundary correction is `6eae938`, and the original P1 review rebased to `12afe20`. The approved follow-up on `qualification/p1` implements deltas **1, 2, 3, 6, 7, 8, 9, 12** below. Original condition/API/scenario tables and F1–F11 findings are preserved as **historical preimplementation evidence**, including their original line citations and wrong-behavior witnesses; they are not current invariant claims. The Implemented section is authoritative for current behavior and test titles. Deltas 4, 5, 10, 11 remain proposals. Examples and new tests use public package exports; engine export paths include `.ts`. Registry packaging remains UNVERIFIED.
 
 **Result:** the four bounded offline scenarios can be composed through public exports. This does NOT qualify actual Pi receipt, semantic accuracy, durable memory, real worker execution or production operation. D1' supersedes the former connector decision: no package here depends on Fabric; core owns an independent worker execution port + reusable fake conformance, and lazy-harness owns EXACT-pinned Fabric implementation and the first bun/Node >=24 probe in issue #1 P7 thin-consumer work, out of repo. D2 remains provisional and unmeasured. Pi declares only `inject-context`.
 
-From the repository root, with the P0-installed dependencies already present:
+From the repository root, using the normal workspace install:
 
 ```sh
-bun examples/p1/prepare-local-links.ts
+bun install --frozen-lockfile
 bun test packages/core/test hosts/pi/test/pi-host.test.ts
 bunx tsc -p packages/core/tsconfig.json
 bunx tsc -p hosts/pi/tsconfig.json
 bunx tsc -p examples/p1/tsconfig.json
 ```
 
-The non-workspace `examples/p1` directory needs three ignored local package-root links. `prepare-local-links.ts` verifies/links the already-present core, Pi and TypeBox packages; it neither installs dependencies nor aliases source entrypoints. TypeScript inherits existing strict/noEmit settings; no existing tsconfig was modified. Initial targeted execution exposed missing example dependency resolution (one import error and compiler diagnostics); adding this explicit offline setup resolved it. There were also two inspection-command mistakes (missing test filename; malformed grep regex), not product failures.
+`examples/p1` is a private workspace with declared core and Pi workspace dependencies and the same TypeBox version spec as core. The normal root install resolves these dependencies through package exports, without source aliases or separate setup. TypeScript inherits existing strict/noEmit settings; no existing tsconfig was modified. The original review's separate local setup masked missing dependency resolution in clean checkouts; workspace installation replaces that workaround. There were also two original inspection-command mistakes (missing test filename; malformed grep regex), not product failures.
 
 Original P1 review test summary, before the approved implementation (verbatim):
 

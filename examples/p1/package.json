@@ -1,0 +1,10 @@
+{
+  "name": "@lazy-harness/monitoring-examples-p1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@lazy-harness/monitoring-core": "workspace:*",
+    "@lazy-harness/monitoring-host-pi": "workspace:*",
+    "typebox": "*"
+  }
+}
