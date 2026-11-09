@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
 import { createMonitoringModelRouter, parseMonitoringModelConfiguration, type MonitoringModelHost, type MonitoringBoundModelProfile, type MonitoringModelBackend, type MonitoringModelRequest } from '../sdk/models.ts'
-import { type ObservationContext, type PiMonitoringObserver, observationEvents } from '../observer/monitoring-observer.ts'
+import { observationEvents, type ObservationFrame } from '../host/frames.ts'
 import { MonitoringCore, type Grants, type JudgeQuestion, type JudgeTask, type Json, type Reference } from './monitoring-core.ts'
-import { RealtimeMonitoringCoordinator, createPiRealtimeTap, type RealtimeSignal, type RealtimeLease, type RealtimePrepared, type RealtimeDependency, type RealtimeLimits } from './monitoring-core-realtime.ts'
-import { RealtimeMaterialWindow, createPiMaterialTap, type RealtimeMaterial, type MaterialWindowOptions } from './monitoring-core-realtime-material.ts'
+import { RealtimeMonitoringCoordinator, type RealtimeSignal, type RealtimeLease, type RealtimePrepared, type RealtimeDependency, type RealtimeLimits } from './monitoring-core-realtime.ts'
+import { RealtimeMaterialWindow, type RealtimeMaterial, type MaterialWindowOptions } from './monitoring-core-realtime-material.ts'
 import type { WindowProjectionSource } from './monitoring-core-source-projection.ts'
 import type { InputProjectionBatch } from './monitoring-core-input-projection.ts'
 
@@ -282,7 +282,11 @@ export class RealtimeSelectionBridge {
 
 const TRACED_SELECTION = new Set(['material_unavailable', 'request_limit', 'view_limit', 'duplicate', 'scope_or_permission_unavailable', 'projection_capture_rejected', 'core_or_material_rejected', 'batch_limit', 'region_compaction_failed', 'no_selected_current_material', 'required_evidence_rejected'])
 function triggered(m: RealtimeWatchModule, input: RealtimeSignal): boolean { try { return m.trigger!(input.frame) === true } catch { return false } }
-export function createRealtimeSelectionPipeline(options: { enabled?: boolean; observer: Pick<PiMonitoringObserver, 'frames'>; material: MaterialWindowOptions; selection: Omit<RealtimeSelectionOptions, 'enabled' | 'window'>; realtimeLimits?: Partial<RealtimeLimits> }) {
+/**
+ * One selection pipeline (window + bridge + coordinator). Host-neutral (ADR 0062): a host adapter hands every observed
+ * frame to `accept` in order; `halt` fails the pipeline closed when the host loses its frame sequence.
+ */
+export function createRealtimeSelectionPipeline(options: { enabled?: boolean; material: MaterialWindowOptions; selection: Omit<RealtimeSelectionOptions, 'enabled' | 'window'>; realtimeLimits?: Partial<RealtimeLimits> }) {
   const enabled = options.enabled === true
   const window = new RealtimeMaterialWindow({ ...options.material, enabled, metaEvents: [...new Set(options.selection.modules.flatMap(m => [...m.watchEvents]))] })
   let selection: RealtimeSelectionBridge
@@ -292,15 +296,18 @@ export function createRealtimeSelectionPipeline(options: { enabled?: boolean; ob
     coordinator = new RealtimeMonitoringCoordinator({ enabled, ...(options.selection.trace ? { onTrace: (r: Record<string, unknown>) => options.selection.trace!({ type: 'delivery', moduleIds: options.selection.modules.map(m => m.id), ...r }) } : {}), watchEvents: [...new Set(options.selection.modules.flatMap(m => [...m.watchEvents]))], isPermitted: input => selection.canPrepare(input), dependencies: input => selection.dependencies(input), sourceVersion: selection.sourceVersion, prepare: selection.prepare, limits: { maxDependencies: window.limits.maxSources + 1 + selection.projectionDependencyCount, ...options.realtimeLimits } })
     if (coordinator.limits.maxDependencies < window.limits.maxSources + 1 + selection.projectionDependencyCount) throw new Error('realtime dependency ceiling is below admitted material scope')
   } catch (error) { selection.dispose(); window.dispose(); throw error }
-  const materialTap = createPiMaterialTap({ enabled, observer: options.observer, window, step: () => coordinator.getStatus().step })
-  const realtimeTap = createPiRealtimeTap({ enabled, observer: options.observer, coordinator })
-  const dispose = () => { let failed = false; for (const close of [realtimeTap.dispose, materialTap.dispose, () => selection.dispose()]) { try { close() } catch { failed = true } } if (failed) throw new Error('selection pipeline cleanup failed') }
-  return Object.freeze({ window, selection, coordinator,
+  const skip = (state: string, frame: ObservationFrame) => state === 'stopped' || state === 'disposed' || (state === 'idle' && frame.sourceEvent !== 'session_start')
+  const accept = (frame: ObservationFrame, readProgress?: () => unknown): void => {
+    if (!enabled) return
+    const ws = window.getStatus().state
+    if (!skip(ws, frame)) { try { if (ws === 'idle') window.start({ sessionId: frame.sessionId, binding: frame.binding, afterCursor: frame.cursor - 1 }); window.capture(frame, coordinator.getStatus().step, readProgress) } catch { window.stop() } }
+    const cs = coordinator.getStatus().state
+    if (!skip(cs, frame)) { try { if (cs === 'idle') coordinator.start({ sessionId: frame.sessionId, binding: frame.binding, afterCursor: frame.cursor - 1 }); coordinator.accept(frame) } catch { coordinator.stop('missing_source_frame') } }
+  }
+  const halt = (reason = 'missing_source_frame') => { window.stop(); coordinator.stop(reason) }
+  const dispose = () => { let failed = false; for (const close of [() => coordinator.dispose(), () => window.dispose(), () => selection.dispose()]) { try { close() } catch { failed = true } } if (failed) throw new Error('selection pipeline cleanup failed') }
+  return Object.freeze({ window, selection, coordinator, accept, halt,
     advanceIntent() { window.advanceIntent(); coordinator.advanceIntent() },
-    extension(pi: { on(name: string, handler: (event: any, ctx: ObservationContext) => undefined): unknown }) {
-      if (!enabled) return
-      try { materialTap.extension(pi); realtimeTap.extension(pi) } catch { try { dispose() } catch { /* All owners attempted. */ } throw new Error('selection pipeline setup rejected') }
-    },
     async idle() { await coordinator.idle(); await selection.idle() }, dispose,
   })
 }
@@ -308,9 +315,7 @@ export function createRealtimeSelectionPipeline(options: { enabled?: boolean; ob
 /**
  * task154 default composition: modules decide and trigger INDEPENDENTLY. One pipeline per module, each with its own
  * material window (own budget), coordinator (own admission and trigger condition), selection bridge and judge requests,
- * so one module's size, failure or timing never changes another module's input or outcome. The observer is shared.
- * Batching several modules into one request (`createRealtimeSelectionPipeline` with many modules) stays available only
- * as an optional transport optimisation for unconditional modules.
+ * so one module's size, failure or timing never changes another module's input or outcome. Frames are fanned out.
  */
 export function createIndependentSelectionPipelines(options: Parameters<typeof createRealtimeSelectionPipeline>[0]) {
   const modules = options.selection.modules
@@ -320,8 +325,9 @@ export function createIndependentSelectionPipelines(options: Parameters<typeof c
   const byModule = Object.freeze(Object.fromEntries(modules.map((m, i) => [m.id, pipelines[i]!])))
   const dispose = () => { let failed = false; for (const p of pipelines) { try { p.dispose() } catch { failed = true } } if (failed) throw new Error('independent pipeline cleanup failed') }
   return Object.freeze({ byModule, pipelines: Object.freeze([...pipelines]),
+    accept(frame: ObservationFrame, readProgress?: () => unknown) { for (const p of pipelines) p.accept(frame, readProgress) },
+    halt(reason?: string) { for (const p of pipelines) p.halt(reason) },
     advanceIntent() { for (const p of pipelines) p.advanceIntent() },
-    extension(pi: Parameters<ReturnType<typeof createRealtimeSelectionPipeline>['extension']>[0]) { for (const p of pipelines) p.extension(pi) },
     async idle() { await Promise.all(pipelines.map(p => p.idle())) }, dispose,
   })
 }

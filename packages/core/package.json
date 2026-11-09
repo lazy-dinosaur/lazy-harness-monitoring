@@ -8,7 +8,7 @@
   },
   "exports": {
     ".": "./src/sdk/index.ts",
-    "./engine/*": "./src/engine/*",
-    "./observer": "./src/observer/monitoring-observer.ts"
+    "./host": "./src/host/index.ts",
+    "./engine/*": "./src/engine/*"
   }
 }

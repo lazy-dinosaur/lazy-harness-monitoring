@@ -2,9 +2,14 @@
   "name": "lazy-harness-monitoring",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "modules/*"],
+  "workspaces": [
+    "packages/*",
+    "hosts/*",
+    "modules/*"
+  ],
   "scripts": {
-    "test": "bun test packages/core/test", "typecheck": "tsc -p packages/core/tsconfig.json"
+    "test": "bun test packages/core/test hosts/pi/test --path-ignore-patterns=**/pending-from-core/**",
+    "typecheck": "tsc -p packages/core/tsconfig.json && tsc -p hosts/pi/tsconfig.json"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",

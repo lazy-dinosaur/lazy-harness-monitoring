@@ -8,7 +8,7 @@ import { ApprovedBudgetGate, MemoryIdempotencyStore, MonitoringModuleRuntime, ty
 import { validateMonitoringModuleDeclaration, effectiveMonitoringJobs } from '../src/sdk/declaration.ts'
 import { createFileTraceSink, pruneTraces } from '../src/engine/monitoring-trace.ts'
 import { createIndependentSelectionPipelines, type RealtimeWatchModule } from '../src/engine/monitoring-core-realtime-selection.ts'
-import { PiMonitoringObserver, type ObservationFrame, type ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
+import { type ObservationFrame, type ObservationSnapshot } from '../src/host/frames.ts'
 import { config, fixture, outputFor } from './support/model-fixture.ts'
 
 // task154 step 1 of the use-time tuning loop: run stages and the judgement trace (model calls 0).
@@ -64,10 +64,10 @@ describe('judgement trace (task154)', () => {
     } finally { rmSync(dir, { recursive: true, force: true }) }
   })
   test('the pipeline traces what the judge saw, the decision and the delivery outcome', async () => {
-    const f = fixture(), observer = new PiMonitoringObserver(() => undefined), rows: any[] = []
+    const f = fixture(), rows: any[] = []
     ;(f.host.backends as any).native = { ...f.host.backends.native, invoke: (request: any, context: any) => { f.calls.push({ request, context }); const out: any = outputFor(request); out.value.answers.decision_0.choice = 'run'; request.body.state.tasks[0].view.context.references.forEach((_r: any, j: number) => { out.value.answers[`ref_0_${j}`].probability = 0.95 }); return out } }
     const module: RealtimeWatchModule = { id: 'trace.mod', watchEvents: ['input'], referenceKinds: ['user-text'], grants: { referenceKinds: ['user-text'], actions: ['monitoring.selected-material'] }, question: q, destination: 'sink' }
-    const set = createIndependentSelectionPipelines({ enabled: true, observer, material: { allowedKinds: ['user-text'] }, selection: { modules: [module], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true, trace: r => rows.push(r) }, realtimeLimits: { jobTimeoutMs: 10000 } })
+    const set = createIndependentSelectionPipelines({ enabled: true, material: { allowedKinds: ['user-text'] }, selection: { modules: [module], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true, trace: r => rows.push(r) }, realtimeLimits: { jobTimeoutMs: 10000 } })
     const p = set.pipelines[0]!; p.window.start({ sessionId: 's', binding: 1 }); p.coordinator.start({ sessionId: 's', binding: 1 })
     const snapshot: ObservationSnapshot = { sessionId: 's', leafId: 'l1', branch: [], canonicalMessages: [], effectiveSystemPrompt: null, stage: 'canonical_projection', canonicalHash: 'h1', revision: 'r1', available: true, fullProviderContext: false, omitted: [] }
     const frame: ObservationFrame = { id: 'frame:1', cursor: 1, sourceEvent: 'input', kind: 'input', sessionId: 's', binding: 1, epoch: 1, payload: { text: 'please check' }, snapshot, available: true }

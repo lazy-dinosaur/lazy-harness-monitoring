@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { redactSecrets } from './monitoring-core-redaction.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
-import { observationEvents, type ObservationContext, type ObservationFrame, type PiMonitoringObserver } from '../observer/monitoring-observer.ts'
+import { observationEvents, type ObservationFrame } from '../host/frames.ts'
 import type { Reference } from './monitoring-core.ts'
 
 export type RealtimeMaterial = Reference & Readonly<{ text: string; provisional: boolean; provenance: Readonly<{ owner: 'observation' | 'host'; observationId: string | null; sessionId: string; binding: number; sourceEvent: string; cursor: number | null; step: number; stage: 'event-hook' | 'partial' | 'final-hook' | 'host-provided' }> }>
@@ -319,36 +319,4 @@ export class RealtimeMaterialWindow {
   advanceIntent(): void { if (this.state === 'running') this.reset() }
   stop(): void { if (this.state === 'disposed') return; this.state = 'stopped'; this.generation++; this.materials.clear(); this.frames.clear(); this.size = 0; this.clearRegion() }
   dispose(): void { this.stop(); this.state = 'disposed' }
-}
-
-/** Explicit collection admission. Install after the diagnostic observer and BEFORE the A realtime tap. */
-export function createPiMaterialTap(options: { enabled?: boolean; observer: Pick<PiMonitoringObserver, 'frames'>; window: RealtimeMaterialWindow; step(): number }) {
-  const enabled = options.enabled === true, observer = options.observer, window = options.window, step = options.step
-  const off: Array<() => void> = []; let installed = false, last = 0
-  const dispose = () => { let failed = false; for (const unsubscribe of off.splice(0)) { try { unsubscribe() } catch { failed = true } } window.dispose(); if (failed) throw new Error('material tap cleanup failed') }
-  return Object.freeze({
-    extension(pi: { on(name: string, handler: (event: any, ctx: ObservationContext) => undefined): unknown }) {
-      if (!enabled) return
-      if (installed) throw new Error('material tap already installed')
-      installed = true
-      try {
-        for (const name of observationEvents) {
-          const unsubscribe = pi.on(name, (event, ctx) => {
-            try {
-              const state = window.getStatus().state
-              if (state === 'stopped' || state === 'disposed' || state === 'idle' && name !== 'session_start') return undefined
-              const frame = observer.frames.at(-1)
-              if (!frame || frame.cursor <= last || frame.sourceEvent !== name || frame.sessionId !== ctx.sessionManager.getSessionId()) { window.stop(); return undefined }
-              last = frame.cursor
-              if (state === 'idle') window.start({ sessionId: frame.sessionId, binding: frame.binding, afterCursor: frame.cursor - 1 })
-              window.capture(frame, step(), name === 'tool_execution_update' ? () => event.partialResult : undefined)
-            } catch { window.stop() }
-            return undefined
-          })
-          if (typeof unsubscribe !== 'function') throw new Error('material tap requires unsubscribe handles')
-          off.push(unsubscribe as () => void)
-        }
-      } catch { try { dispose() } catch { /* All handles attempted; window is disposed. */ } throw new Error('material tap setup rejected') }
-    }, dispose,
-  })
 }

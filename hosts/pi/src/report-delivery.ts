@@ -2,8 +2,8 @@
 // agent's model input through the existing ContextCarryMailbox policy: same turn if another request follows,
 // otherwise once at the next turn's first request with an origin/age label; scope or source changes drop it.
 // Turn boundaries come from `input` events; a tree/branch change starts a new branch scope. No text classification.
-import { ContextCarryMailbox, type CarryDependency, type CarryDelivery } from './monitoring-core-context-mailbox.ts'
-import type { Report } from './monitoring-engine-runtime.ts'
+import { ContextCarryMailbox, type CarryDependency, type CarryDelivery } from '@lazy-harness/monitoring-core/engine/monitoring-core-context-mailbox.ts'
+import type { Report } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 
 export type ParentReportDeliveryOptions = Readonly<{ mailbox: ContextCarryMailbox; now?: () => number }>
 export function createParentReportDelivery(options: ParentReportDeliveryOptions) {

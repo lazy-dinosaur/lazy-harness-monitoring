@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { RealtimeMaterialWindow } from '../src/engine/monitoring-core-realtime-material.ts'
-import type { ObservationFrame, ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
+import type { ObservationFrame, ObservationSnapshot } from '../src/host/frames.ts'
 
 const kinds = ['user-text', 'assistant-text']
 function setup() {

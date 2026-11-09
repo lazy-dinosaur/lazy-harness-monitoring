@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
-import { observationEvents, type ObservationContext, type ObservationFrame, type PiMonitoringObserver } from '../observer/monitoring-observer.ts'
+import { observationEvents, type ObservationFrame } from '../host/frames.ts'
 import type { Json } from './monitoring-core.ts'
 
 export type RealtimeDependency = Readonly<{ id: string; version: string }>
@@ -263,44 +263,4 @@ export class RealtimeMonitoringCoordinator {
     this.notifyIdle()
   }
   private notifyIdle() { if (!this.queue.length && !this.active.size) for (const resolve of this.waiters.splice(0)) resolve() }
-}
-
-/** Install AFTER the existing observer. Notification-only: no raw-event reads, context edits, continuation or implicit observer creation. */
-export function createPiRealtimeTap(options: { enabled?: boolean; observer: Pick<PiMonitoringObserver, 'frames'>; coordinator: RealtimeMonitoringCoordinator }) {
-  const enabled = options.enabled === true, observer = options.observer, coordinator = options.coordinator
-  const off: Array<() => void> = []
-  let installed = false
-  let lastCursor = 0
-  const dispose = () => {
-    let failed = false
-    for (const unsubscribe of off.splice(0)) { try { unsubscribe() } catch { failed = true } }
-    coordinator.dispose()
-    if (failed) throw new Error('realtime tap cleanup failed')
-  }
-  return Object.freeze({
-    extension(pi: { on(name: string, handler: (event: any, ctx: ObservationContext) => undefined): unknown }): void {
-      if (!enabled) return
-      if (installed) throw new Error('realtime tap already installed')
-      installed = true
-      try {
-        for (const name of observationEvents) {
-          const unsubscribe = pi.on(name, (_event, ctx) => {
-            const state = coordinator.getStatus().state
-            if (state === 'stopped' || state === 'disposed' || state === 'idle' && name !== 'session_start') return undefined
-            try {
-              const frame = observer.frames.at(-1)
-              if (!frame || frame.cursor <= lastCursor || frame.sourceEvent !== name || frame.sessionId !== ctx.sessionManager.getSessionId()) { coordinator.stop('missing_source_frame'); return undefined }
-              lastCursor = frame.cursor
-              if (name === 'session_start' && coordinator.getStatus().state === 'idle') coordinator.start({ sessionId: frame.sessionId, binding: frame.binding, afterCursor: frame.cursor - 1 })
-              coordinator.accept(frame)
-            } catch { coordinator.stop('missing_source_frame') }
-            return undefined
-          })
-          if (typeof unsubscribe !== 'function') throw new Error('realtime tap needs unsubscribe handles')
-          off.push(unsubscribe as () => void)
-        }
-      } catch { try { dispose() } catch { /* Every owned handle was attempted and the coordinator is disposed. */ } throw new Error('realtime tap setup rejected') }
-    },
-    dispose,
-  })
 }

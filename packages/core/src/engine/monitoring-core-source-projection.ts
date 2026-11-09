@@ -1,6 +1,6 @@
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { modelJson } from '../sdk/model-schema.ts'
-import { observationEvents, type ObservationFrame } from '../observer/monitoring-observer.ts'
+import { observationEvents, type ObservationFrame } from '../host/frames.ts'
 import { RealtimeMaterialWindow, type RealtimeMaterial } from './monitoring-core-realtime-material.ts'
 import { buildInputProjection, type InputProjectionBatch, type ProjectionBinding, type ProjectionHost, type SourceMeta } from './monitoring-core-input-projection.ts'
 import type { JudgeQuestion, JudgeTask, Reference } from './monitoring-core.ts'

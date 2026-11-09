@@ -5,7 +5,7 @@ import { RealtimeMaterialWindow } from '../src/engine/monitoring-core-realtime-m
 import { RealtimeMonitoringCoordinator, type RealtimeLease } from '../src/engine/monitoring-core-realtime.ts'
 import { MonitoringCore, type JudgeTask, type Json, type Reference } from '../src/engine/monitoring-core.ts'
 import type { InputProjectionBatch } from '../src/engine/monitoring-core-input-projection.ts'
-import type { ObservationFrame, ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
+import type { ObservationFrame, ObservationSnapshot } from '../src/host/frames.ts'
 import { decodeMonitoringJudgements } from '../src/sdk/model-adapters.ts'
 import { fixture as modelFixture, deferred } from './support/model-fixture.ts'
 const clone=<T>(v:T):T=>JSON.parse(JSON.stringify(v))

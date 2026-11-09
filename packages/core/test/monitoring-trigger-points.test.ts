@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import Type from 'typebox'
 import { defineMonitoringModule, parseMonitoringConfiguration, prepareMonitoringBindings, MonitoringConfigurationError, resolveMonitoringWatch, MONITORING_TRIGGER_POINTS } from '../src/sdk/index.ts'
-import { observationEvents, PiMonitoringObserver, type ObservationFrame, type ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
+import { observationEvents, type ObservationFrame, type ObservationSnapshot } from '../src/host/frames.ts'
 import { createIndependentSelectionPipelines, createRealtimeSelectionPipeline, type RealtimeWatchModule } from '../src/engine/monitoring-core-realtime-selection.ts'
 import { watchModuleFromDeclaration } from '../src/engine/monitoring-engine-runtime.ts'
 import { config, fixture, outputFor } from './support/model-fixture.ts'
@@ -56,9 +56,9 @@ describe('trigger points (task154, model calls 0)', () => {
 const mod = (id: string, trigger?: RealtimeWatchModule['trigger']): RealtimeWatchModule => ({ id, watchEvents: ['input'], referenceKinds: ['user-text'], grants: { referenceKinds: ['user-text'], actions: ['monitoring.selected-material'] }, question, destination: 'sink:' + id, ...(trigger ? { trigger } : {}) })
 const steerOnly = resolveMonitoringWatch(['user.steer']).matches
 function harness(modules: RealtimeWatchModule[], fail?: string) {
-  const f = fixture(), observer = new PiMonitoringObserver(() => undefined)
+  const f = fixture()
   ;(f.host.backends as any).native = { ...f.host.backends.native, invoke: (request: any, context: any) => { f.calls.push({ request, context }); const ids = request.body.state.tasks.map((t: any) => t.processorId); if (fail && ids.includes(fail)) throw new Error('module judge failure'); const out: any = outputFor(request); request.body.state.tasks.forEach((t: any, i: number) => { out.value.answers[`decision_${i}`].choice = 'run'; t.view.context.references.forEach((_r: any, j: number) => { out.value.answers[`ref_${i}_${j}`].probability = 0.95 }) }); return out } }
-  const set = createIndependentSelectionPipelines({ enabled: true, observer, material: { allowedKinds: ['user-text'] }, selection: { modules, goal: 'Independent trigger proof', modelConfig: config(), modelHost: f.host, isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000 } })
+  const set = createIndependentSelectionPipelines({ enabled: true, material: { allowedKinds: ['user-text'] }, selection: { modules, goal: 'Independent trigger proof', modelConfig: config(), modelHost: f.host, isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000 } })
   for (const p of set.pipelines) { p.window.start({ sessionId: 's', binding: 1 }); p.coordinator.start({ sessionId: 's', binding: 1 }) }
   let cursor = 0
   const feed = async (payload: any) => {
@@ -75,8 +75,8 @@ function harness(modules: RealtimeWatchModule[], fail?: string) {
 
 describe('independent per-module pipelines (task154, model calls 0)', () => {
   test('a batched bridge refuses conditional modules', () => {
-    const f = fixture(), observer = new PiMonitoringObserver(() => undefined)
-    expect(() => createRealtimeSelectionPipeline({ enabled: true, observer, material: { allowedKinds: ['user-text'] }, selection: { modules: [mod('a.mod', steerOnly), mod('b.mod')], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true } })).toThrow('independent per-module pipelines')
+    const f = fixture()
+    expect(() => createRealtimeSelectionPipeline({ enabled: true, material: { allowedKinds: ['user-text'] }, selection: { modules: [mod('a.mod', steerOnly), mod('b.mod')], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true } })).toThrow('independent per-module pipelines')
   })
   test('each module triggers on its own point and sends its own judge request', async () => {
     const h = harness([mod('steer.mod', steerOnly), mod('all.mod')])

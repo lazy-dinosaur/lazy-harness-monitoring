@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { MonitoringCore, type CoreEvent, type EventReport, type Grants, type JudgeBatchPort, type Limits, type Processor, type ProposalRequest, type Receipt, type Reference } from './monitoring-core.ts'
-import type { ObservationFrame } from '../observer/monitoring-observer.ts'
+import type { ObservationFrame } from '../host/frames.ts'
 
 export type ObservationLease = Readonly<{ signal: AbortSignal; isCurrent(): boolean }>
 export type MaterialSource = Readonly<{ observationId: string; sessionId: string; binding: number; cursor: number; settlementId: string; snapshotRevision: string }>

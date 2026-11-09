@@ -9,6 +9,13 @@
         "typescript": "^7.0.2",
       },
     },
+    "hosts/pi": {
+      "name": "@lazy-harness/monitoring-host-pi",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lazy-harness/monitoring-core": "workspace:*",
+      },
+    },
     "modules/memory": {
       "name": "@lazy-harness/monitoring-module-memory",
       "version": "0.0.0",
@@ -32,23 +39,19 @@
       "name": "@lazy-harness/monitoring-eval",
       "version": "0.0.0",
     },
-    "packages/pi-host": {
-      "name": "@lazy-harness/monitoring-pi-host",
-      "version": "0.0.0",
-    },
   },
   "packages": {
     "@lazy-harness/monitoring-core": ["@lazy-harness/monitoring-core@workspace:packages/core"],
 
     "@lazy-harness/monitoring-eval": ["@lazy-harness/monitoring-eval@workspace:packages/eval"],
 
+    "@lazy-harness/monitoring-host-pi": ["@lazy-harness/monitoring-host-pi@workspace:hosts/pi"],
+
     "@lazy-harness/monitoring-module-memory": ["@lazy-harness/monitoring-module-memory@workspace:modules/memory"],
 
     "@lazy-harness/monitoring-module-references": ["@lazy-harness/monitoring-module-references@workspace:modules/references"],
 
     "@lazy-harness/monitoring-module-rule-steering": ["@lazy-harness/monitoring-module-rule-steering@workspace:modules/rule-steering"],
-
-    "@lazy-harness/monitoring-pi-host": ["@lazy-harness/monitoring-pi-host@workspace:packages/pi-host"],
 
     "@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
 

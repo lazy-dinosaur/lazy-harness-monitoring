@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs'
 import { RealtimeExecutionConsumer, type RealtimeExecutionInvocation } from '../src/engine/monitoring-core-realtime-execution.ts'
 import { createRealtimeSelectionPipeline, type RealtimeWatchModule, type RealtimeSelectionPacket } from '../src/engine/monitoring-core-realtime-selection.ts'
 import type { RealtimeOffer } from '../src/engine/monitoring-core-realtime.ts'
-import { PiMonitoringObserver, type ObservationFrame } from '../src/observer/monitoring-observer.ts'
+import { type ObservationFrame } from '../src/host/frames.ts'
 import { fixture, config, outputFor, deferred } from './support/model-fixture.ts'
 const digest = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex')
 const originalFetch = globalThis.fetch
@@ -14,10 +14,9 @@ beforeAll(() => { globalThis.fetch = Object.assign(async () => { network++; thro
 afterAll(() => { globalThis.fetch = originalFetch; expect(network).toBe(0); if (process.env.PI_MONITORING_C1_REPORT) writeFileSync(process.env.PI_MONITORING_C1_REPORT, JSON.stringify({ network, sdkSessions: 0, realModels: 0, businessEffects: 0, witnesses }, null, 2) + '\n') })
 function setup(options: { ids?: string[]; modes?: Record<string, string>; execute?: (p: RealtimeSelectionPacket, i: RealtimeExecutionInvocation, effect: () => any) => any; limits?: any; enabled?: boolean } = {}) {
   const f = fixture(), ids = options.ids ?? ['purpose.counter', 'purpose.labels'], permitted = new Set(ids), targetGrants = new Set(ids)
-  const observer = new PiMonitoringObserver(() => undefined)
   const modules: RealtimeWatchModule[] = ids.map((id, index) => { const kinds = index ? ['tool-result', 'policy'] : ['tool-result']; return { id, destination: 'target:' + id, watchEvents: ['tool_result'], referenceKinds: kinds, grants: { referenceKinds: kinds, actions: ['monitoring.selected-material'] }, question: { instructions: 'Synthetic transport proof, not semantic accuracy', criteria: { run: 'Process admitted sample', skip: 'No sample', defer: 'Unknown' } } } })
   ;(f.host.backends as any).native = { ...f.host.backends.native, invoke(request: any, context: any) { f.calls.push({ request, context }); const response: any = outputFor(request); request.body.state.tasks.forEach((t: any, n: number) => { response.value.answers['decision_' + n].choice = options.modes?.[t.processorId] ?? 'run' }); return response } }
-  const pipeline = createRealtimeSelectionPipeline({ enabled: true, observer, material: { allowedKinds: ['tool-result', 'policy'], references: [{ id: 'labels.policy', kind: 'policy', version: '1', content: 'LABELS_ONLY_PRIVATE_POLICY' }] }, selection: { modules, modelConfig: config(), modelHost: f.host, goal: 'C1 purpose-independent handoff', isPermitted: id => permitted.has(id) }, realtimeLimits: { jobTimeoutMs: 10000 } })
+  const pipeline = createRealtimeSelectionPipeline({ enabled: true, material: { allowedKinds: ['tool-result', 'policy'], references: [{ id: 'labels.policy', kind: 'policy', version: '1', content: 'LABELS_ONLY_PRIVATE_POLICY' }] }, selection: { modules, modelConfig: config(), modelHost: f.host, goal: 'C1 purpose-independent handoff', isPermitted: id => permitted.has(id) }, realtimeLimits: { jobTimeoutMs: 10000 } })
   pipeline.window.start({ sessionId: 'c1-session', binding: 1 }); pipeline.coordinator.start({ sessionId: 'c1-session', binding: 1 })
   let cursor = 0, binding = 1
   const ledger: Array<{ purpose: string; packet: RealtimeSelectionPacket; executionId: string; effectId: string; value: unknown }> = [], invocations: Array<{ packet: RealtimeSelectionPacket; invocation: RealtimeExecutionInvocation }> = []

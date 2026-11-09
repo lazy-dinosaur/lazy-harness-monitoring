@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { RealtimeMaterialWindow, regionLines } from '../src/engine/monitoring-core-realtime-material.ts'
 import { createIndependentSelectionPipelines, type RealtimeWatchModule } from '../src/engine/monitoring-core-realtime-selection.ts'
-import { PiMonitoringObserver, type ObservationFrame, type ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
+import { type ObservationFrame, type ObservationSnapshot } from '../src/host/frames.ts'
 import { config, fixture, outputFor } from './support/model-fixture.ts'
 
 // task154: per-module between-region input (everything since the module's last judged point), memo and state.
@@ -69,10 +69,10 @@ describe('between-region input (task154, model calls 0)', () => {
 
 describe('bridge moves the region after a judgement (task154, model calls 0)', () => {
   test('the second judge request carries only the new span', async () => {
-    const f = fixture(), observer = new PiMonitoringObserver(() => undefined)
+    const f = fixture()
     ;(f.host.backends as any).native = { ...f.host.backends.native, invoke: (request: any, context: any) => { f.calls.push({ request, context }); const out: any = outputFor(request); request.body.state.tasks.forEach((t: any, i: number) => { out.value.answers[`decision_${i}`].choice = 'skip' }); return out } }
     const module: RealtimeWatchModule = { id: 'region.mod', watchEvents: ['turn_end'], referenceKinds: ['conversation-history'], grants: { referenceKinds: ['conversation-history'], actions: ['monitoring.selected-material'] }, question: { instructions: 'q', criteria: { run: 'r', skip: 's', defer: 'd' } }, destination: 'sink' }
-    const set = createIndependentSelectionPipelines({ enabled: true, observer, material: { allowedKinds: ['conversation-history'], historyMode: 'since-last' }, selection: { modules: [module], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000 } })
+    const set = createIndependentSelectionPipelines({ enabled: true, material: { allowedKinds: ['conversation-history'], historyMode: 'since-last' }, selection: { modules: [module], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000 } })
     const p = set.pipelines[0]!; p.window.start({ sessionId: 's', binding: 1 }); p.coordinator.start({ sessionId: 's', binding: 1 })
     cursor = 0
     const feed = async (fr: ObservationFrame) => { p.window.capture(fr, p.coordinator.getStatus().step); p.coordinator.accept(fr); await set.idle() }
@@ -90,14 +90,14 @@ describe('bridge moves the region after a judgement (task154, model calls 0)', (
 
 describe('purpose-scoped region compaction (task154, model calls 0)', () => {
   test('Jev keeps only the region items the module purpose needs before the judgement', async () => {
-    const f = fixture(), observer = new PiMonitoringObserver(() => undefined)
+    const f = fixture()
     ;(f.host.backends as any).native = { ...f.host.backends.native, invoke: (request: any, context: any) => {
       f.calls.push({ request, context }); const out: any = outputFor(request), task = request.body.state.tasks[0]
       const compact = String(task.view.event.id).endsWith(':compact')
       task.view.context.references.forEach((r: any, j: number) => { out.value.answers[`ref_0_${j}`].probability = compact ? (JSON.parse(r.content).text.includes('relevant') ? 0.95 : 0.05) : 0.05 })
       out.value.answers.decision_0.choice = compact ? 'run' : 'skip'; return out } }
     const module: RealtimeWatchModule = { id: 'compact.mod', watchEvents: ['turn_end'], referenceKinds: ['conversation-history'], grants: { referenceKinds: ['conversation-history'], actions: ['monitoring.selected-material'] }, question: { instructions: 'Detect relevant work', criteria: { run: 'r', skip: 's', defer: 'd' } }, destination: 'sink', compactRegion: true }
-    const set = createIndependentSelectionPipelines({ enabled: true, observer, material: { allowedKinds: ['conversation-history'], historyMode: 'since-last' }, selection: { modules: [module], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000 } })
+    const set = createIndependentSelectionPipelines({ enabled: true, material: { allowedKinds: ['conversation-history'], historyMode: 'since-last' }, selection: { modules: [module], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000 } })
     const p = set.pipelines[0]!; p.window.start({ sessionId: 's', binding: 1 }); p.coordinator.start({ sessionId: 's', binding: 1 })
     cursor = 0
     try {

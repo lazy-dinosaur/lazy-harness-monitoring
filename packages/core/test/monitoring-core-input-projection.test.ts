@@ -5,7 +5,7 @@ import { MonitoringCore, type JudgeTask, type Reference, type Decision, type Jso
 import { RealtimeMonitoringCoordinator, type RealtimeLease } from '../src/engine/monitoring-core-realtime.ts'
 import { decodeMonitoringJudgements } from '../src/sdk/model-adapters.ts'
 import { fixture as modelFixture, deferred } from './support/model-fixture.ts'
-import type { ObservationFrame, ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
+import type { ObservationFrame, ObservationSnapshot } from '../src/host/frames.ts'
 const clone=<T>(x:T):T=>JSON.parse(JSON.stringify(x))
 const ids=['knowledge.candidate','references.prepare'] as const
 const questions={

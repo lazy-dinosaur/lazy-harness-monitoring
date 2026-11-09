@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { RealtimeMaterialWindow } from '../src/engine/monitoring-core-realtime-material.ts'
 import { redactSecrets } from '../src/engine/monitoring-core-redaction.ts'
-import type { ObservationFrame, ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
+import type { ObservationFrame, ObservationSnapshot } from '../src/host/frames.ts'
 
 const user = (text: string) => ({ role: 'user', content: [{ type: 'text', text }] })
 const assistant = (text: string, call?: any) => ({ role: 'assistant', content: [{ type: 'text', text }, ...(call ? [{ type: 'toolCall', id: 'c1', ...call }] : [])] })

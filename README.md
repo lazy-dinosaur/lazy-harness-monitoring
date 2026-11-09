@@ -9,9 +9,14 @@ TypeScript, Fabric-independent (ADR 0061 in lazy-harness); boundaries stay langu
 | Package | Owns |
 |---|---|
 | `packages/core` | engine + inspection ports: trigger points, per-module independent pipelines, between-region input + memo, purpose-scoped compaction, judgement, job runtime (loop guard, idempotency, budget, uncertain-stop), parent report, run stages, judgement trace |
-| `packages/pi-host` | Pi extension binding: observer hooks, context injection, host input ports (e.g. records already read) |
+| `hosts/<agent>` | host adapters owned by the host side, one per agent (`hosts/pi` now; opencode, OMP, Jcode later): turn agent events into ordered frames, deliver reports, implement host input ports, declare capabilities |
 | `packages/eval` | ONE shared evaluation tool every module plugs into: replay → judge → score → version compare, oracle check, budgets, dev/holdout |
 | `modules/*` | one purpose each (question, trigger points, inputs, jobs) with its own gold set and traces |
+
+The core never imports a host. It defines the **Host Adapter contract** (`packages/core/src/host`): the frame vocabulary
+and `ObservationFrame`, `HostCapabilities` (events emitted, actions such as inject-context / steer / block-tool-call,
+snapshot depth), `hostSupportIssues` (modules needing an unsupported trigger point or action are refused, not silently
+idle) and `frameSequenceIssues` (conformance every adapter passes). Pipelines take frames through `accept(frame)`.
 
 Modules: `references` (U1), `rule-steering` (U6), `memory` (new). Data (traces, feedback marks, gold sets) is kept per module.
 
