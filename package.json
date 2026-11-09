@@ -1,0 +1,9 @@
+{
+  "name": "lazy-harness-monitoring",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "modules/*"],
+  "scripts": {
+    "test": "bun test"
+  }
+}
