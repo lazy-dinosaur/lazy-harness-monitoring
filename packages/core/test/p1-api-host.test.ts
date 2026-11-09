@@ -99,18 +99,18 @@ describe('P1 public API and second-host review', () => {
       expect(Object.values(piExports).every(value => value !== undefined)).toBe(true)
     } finally { await c.close() }
   })
-  test('Pi delivery uses context_with_system, not public context metadata; duplicate callbacks deliver twice', () => {
+  test('Pi metadata names context_with_system; duplicate report callbacks deliver once', () => {
     const p = piDeliveryProbe()
-    expect(MONITORING_DELIVERY_POINTS['model.before-call'].sourceEvent).toBe('context')
+    expect(MONITORING_DELIVERY_POINTS['model.before-call'].sourceEvent).toBe('context_with_system')
     expect(p.hooks.has('context')).toBe(false)
     expect(p.hooks.has('context_with_system')).toBe(true)
     const report = { moduleId: 'review.api', jobId: 'prepare', eventId: 'e1', sessionId: 'synthetic-session',
       mode: 'on-result' as const, text: 'read-only advice', riskTier: 'read-only' }
     expect(p.delivery.onReport(report)).toBe(true)
-    expect(p.delivery.onReport(report)).toBe(true)
+    expect(p.delivery.onReport({ ...report })).toBe(false)
     const result = p.hooks.get('context_with_system')!({ messages: [] }, p.ctx) as { messages: unknown[] }
-    expect(result.messages).toHaveLength(2) // Fake hook return, NOT actual provider input.
-    expect(p.delivery.delivered).toHaveLength(2)
+    expect(result.messages).toHaveLength(1) // Fake hook return, NOT actual provider input.
+    expect(p.delivery.delivered).toHaveLength(1)
     expect(p.mailbox.pending).toBe(0)
   })
   test('reported is not a receipt: absent callback still reports true; throwing callback rejects after key consumption', async () => {

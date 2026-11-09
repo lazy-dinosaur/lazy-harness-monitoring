@@ -78,7 +78,7 @@ export const MONITORING_TRIGGER_POINTS = Object.freeze({
 
 /** Points where a module may DELIVER but never be triggered (the engine forbids watching the context hooks). */
 export const MONITORING_DELIVERY_POINTS = Object.freeze({
-  'model.before-call': { sourceEvent: 'context', summary: 'inject pending reports before each model call (carry mailbox)' },
+  'model.before-call': { sourceEvent: 'context_with_system', summary: 'inject pending reports before each model call (carry mailbox)' },
 } satisfies Record<string, PointSpec>)
 
 export type MonitoringTriggerPoint = keyof typeof MONITORING_TRIGGER_POINTS
