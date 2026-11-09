@@ -12,7 +12,7 @@ export function memoryCandidate(options: { script?: Script; rehearseShadow?: boo
 export async function runMemoryCandidate(options: { script?: Script; rehearseShadow?: boolean } = {}) {
   const consumer = memoryCandidate(options)
   try {
-    await consumer.emit('message_end', { message: { role: 'user', content: 'The project uses public entrypoints only.' } })
+    await consumer.emit('message_end', { source: 'interactive', message: { role: 'user', content: 'The project uses public entrypoints only.' } })
     return { packets: consumer.packets, outputs: consumer.outputs, reports: consumer.reports, outcomes: consumer.runtime.outcomes }
   } finally { await consumer.close() }
 }

@@ -8,25 +8,28 @@ import {
 // Independent expected inventory: adding/removing a public point must update this review.
 const points: Array<[string, string, unknown]> = [
   ['user.prompt', 'input', { source: 'interactive', text: 'request' }],
-  ['user.steer', 'input', { streamingBehavior: 'steer' }],
-  ['user.follow-up', 'input', { streamingBehavior: 'followUp' }],
-  ['user.extension-input', 'input', { source: 'extension' }],
-  ['user.shell', 'user_bash', {}],
-  ['user.message', 'message_end', { message: { role: 'user' } }],
-  ['run.start', 'before_agent_start', {}],
-  ['run.custom-start', 'before_agent_start', { messageType: 'custom' }],
-  ['assistant.stream', 'message_update', {}],
-  ['assistant.message', 'message_end', { message: { role: 'assistant' } }],
-  ['extension.message', 'message_end', { message: { role: 'custom' } }],
-  ['tool.before', 'tool_call', {}], ['tool.after', 'tool_result', {}], ['tool.end', 'tool_execution_end', {}],
-  ['tool.failed', 'tool_execution_end', { isError: true }],
-  ['tool.nested', 'tool_execution_end', { parentToolCallId: 'parent' }],
-  ['turn.start', 'turn_start', {}], ['turn.end', 'turn_end', {}], ['run.end', 'agent_end', {}],
-  ['run.before-settle', 'agent_before_settle', {}], ['run.settled', 'agent_settled', {}],
-  ['run.aborted', 'agent_settled', { aborted: true }], ['session.start', 'session_start', {}],
-  ['session.compact', 'session_compact', {}], ['session.tree', 'session_tree', {}],
-  ['model.changed', 'model_select', {}], ['model.thinking-changed', 'thinking_level_select', {}],
-  ['ui.waiting-user', 'ui_prompt_start', {}], ['ui.resumed', 'ui_prompt_end', {}],
+  ['user.steer', 'input', { source: 'rpc', text: 'fix', streamingBehavior: 'steer' }],
+  ['user.follow-up', 'input', { source: 'interactive', text: 'next', streamingBehavior: 'followUp' }],
+  ['extension.input', 'input', { source: 'extension', text: 'extension request' }],
+  ['user.shell', 'user_bash', { source: 'interactive', command: 'echo fixture' }],
+  ['user.message', 'message_end', { source: 'interactive', message: { role: 'user', content: 'body' } }],
+  ['run.start', 'before_agent_start', { prompt: 'request' }],
+  ['run.custom-start', 'before_agent_start', { prompt: 'request', messageType: 'custom' }],
+  ['assistant.stream', 'message_update', { message: { role: 'assistant', content: 'delta' } }],
+  ['assistant.message', 'message_end', { message: { role: 'assistant', content: 'body' } }],
+  ['extension.message', 'message_end', { message: { role: 'custom', content: 'body' } }],
+  ['tool.before', 'tool_call', { toolCallId: 't', toolName: 'bash', input: {} }],
+  ['tool.after', 'tool_result', { toolCallId: 't', toolName: 'bash', content: [] }],
+  ['tool.end', 'tool_execution_end', { toolCallId: 't', toolName: 'bash', isError: false }],
+  ['tool.failed', 'tool_execution_end', { toolCallId: 't', toolName: 'bash', isError: true }],
+  ['tool.nested', 'tool_execution_end', { toolCallId: 't', toolName: 'bash', isError: false, parentToolCallId: 'parent' }],
+  ['turn.start', 'turn_start', { turnIndex: 0 }], ['turn.end', 'turn_end', { turnIndex: 0 }],
+  ['run.end', 'agent_end', { messages: [] }], ['run.before-settle', 'agent_before_settle', { type: 'agent_before_settle' }],
+  ['run.settled', 'agent_settled', { aborted: false }], ['run.aborted', 'agent_settled', { aborted: true }],
+  ['session.start', 'session_start', { reason: 'start' }], ['session.compact', 'session_compact', { compactionEntry: {} }],
+  ['session.tree', 'session_tree', { newLeafId: 'leaf' }], ['model.changed', 'model_select', { model: { id: 'm' } }],
+  ['model.thinking-changed', 'thinking_level_select', { thinkingLevel: 'low' }],
+  ['ui.waiting-user', 'ui_prompt_start', { type: 'ui_prompt_start' }], ['ui.resumed', 'ui_prompt_end', { type: 'ui_prompt_end' }],
 ]
 const matches = (point: string, event: string, payload: unknown) => resolveMonitoringWatch([point]).matches({ sourceEvent: event, payload })
 export function reviewDeclaration(events = ['user.prompt', 'user.steer']): MonitoringModuleDeclaration {
@@ -52,8 +55,8 @@ describe('P1 trigger boundary inventory', () => {
   })
   test('streaming and final message hooks are disjoint; final role is exact', () => {
     for (const role of ['user', 'assistant', 'custom', 'toolResult', '', null]) {
-      const payload = { message: { role, content: 'body' } }
-      expect(matches('assistant.stream', 'message_update', payload)).toBe(true)
+      const payload = { source: 'interactive', message: { role, content: 'body' } }
+      expect(matches('assistant.stream', 'message_update', payload)).toBe(role === 'assistant')
       expect(matches('assistant.message', 'message_update', payload)).toBe(false)
       expect(matches('assistant.stream', 'message_end', payload)).toBe(false)
       expect(matches('assistant.message', 'message_end', payload)).toBe(role === 'assistant')
@@ -61,30 +64,33 @@ describe('P1 trigger boundary inventory', () => {
       expect(matches('extension.message', 'message_end', payload)).toBe(role === 'custom')
     }
   })
-  test('input source/steer/follow-up overlap is CURRENT behavior, not authority isolation', () => {
+  test('input source/steer/follow-up are authority isolated', () => {
     for (const source of ['interactive', 'rpc', 'extension', undefined]) {
       for (const streamingBehavior of [undefined, 'steer', 'followUp', 'follow-up', 'other']) {
         const payload = { source, streamingBehavior, text: 'request' }
-        expect(matches('user.prompt', 'input', payload)).toBe(!streamingBehavior && source !== 'extension')
-        expect(matches('user.steer', 'input', payload)).toBe(streamingBehavior === 'steer')
-        expect(matches('user.follow-up', 'input', payload)).toBe(streamingBehavior === 'followUp')
-        expect(matches('user.extension-input', 'input', payload)).toBe(source === 'extension')
+        expect(matches('user.prompt', 'input', payload)).toBe(!streamingBehavior && (source === 'interactive' || source === 'rpc'))
+        expect(matches('user.steer', 'input', payload)).toBe(streamingBehavior === 'steer' && (source === 'interactive' || source === 'rpc'))
+        expect(matches('user.follow-up', 'input', payload)).toBe(streamingBehavior === 'followUp' && (source === 'interactive' || source === 'rpc'))
+        expect(matches('extension.input', 'input', payload)).toBe(source === 'extension' && [undefined, 'steer', 'followUp'].includes(streamingBehavior))
       }
     }
   })
-  test('malformed null/primitive payloads currently trigger prompt and unconditional points (finding F1)', () => {
+  test('malformed payloads never trigger any named point', () => {
     for (const [point, event] of points) {
-      const spec = MONITORING_TRIGGER_POINTS[point as keyof typeof MONITORING_TRIGGER_POINTS]
-      for (const payload of [null, undefined, 7, 'not an event', [], {}]) {
-        expect(matches(point, event, payload)).toBe(point === 'user.prompt' || !('when' in spec))
+      for (const payload of [null, undefined, 7, 'not an event', [], {}, Object.create({ source: 'interactive', text: 'inherited' })]) {
+        expect(matches(point, event, payload)).toBe(false)
       }
     }
   })
-  test('predicate exceptions fail closed; malformed fields can nevertheless satisfy weak predicates', () => {
-    const payload = { get message() { throw new Error('malformed') } }
+  test('accessors, inherited fields and missing bodies fail closed without reading getters', () => {
+    let reads = 0
+    const payload = { get message() { reads++; throw new Error('malformed') } }
     expect(matches('assistant.message', 'message_end', payload)).toBe(false)
-    expect(matches('user.message', 'message_end', { message: { role: 'user' } })).toBe(true)
-    expect(matches('tool.nested', 'tool_execution_end', { parentToolCallId: '' })).toBe(true)
+    expect(reads).toBe(0)
+    expect(matches('user.message', 'message_end', { source: 'interactive', message: { role: 'user' } })).toBe(false)
+    expect(matches('user.message', 'message_end', { message: { role: 'user', content: 'body' } })).toBe(false)
+    expect(matches('user.message', 'message_end', { source: 'extension', message: { role: 'user', content: 'body' } })).toBe(false)
+    expect(matches('tool.nested', 'tool_execution_end', { toolCallId: 't', toolName: 'bash', isError: false, parentToolCallId: '' })).toBe(false)
     expect(matches('tool.failed', 'tool_execution_end', { isError: 'true' })).toBe(false)
     expect(matches('run.aborted', 'agent_settled', { aborted: 1 })).toBe(false)
   })

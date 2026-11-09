@@ -67,7 +67,7 @@ describe('P1 offline public-package scenario receipts', () => {
   test('C separately opted-in shadow prepares one private candidate per subject; no parent injection', async () => {
     const c = memoryCandidate({ rehearseShadow: true })
     try {
-      for (let i = 0; i < 2; i++) await c.emit('message_end', { message: { role: 'user', content: 'Enduring fixture fact.' } })
+      for (let i = 0; i < 2; i++) await c.emit('message_end', { source: 'interactive', message: { role: 'user', content: 'Enduring fixture fact.' } })
       expect(c.outputs).toHaveLength(1)
       expect(c.outputs[0]).toMatchObject({ notApproved: true, notWritten: true, subjectKey: 'fixture.project.rule' })
       expect(c.reports).toHaveLength(0)
