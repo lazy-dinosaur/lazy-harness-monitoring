@@ -246,7 +246,7 @@
     ]
   },
   {
-    "id": "review.memory-candidate",
+    "id": "synthetic.memory-candidate",
     "declaration": {
       "purpose": {
         "question": {

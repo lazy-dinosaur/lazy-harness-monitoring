@@ -343,7 +343,7 @@
       "cancel": false
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-memory-durable",
       "mode": "run",
       "select": true,
@@ -352,7 +352,7 @@
       "cancel": false
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-memory-transient",
       "mode": "skip",
       "select": true,

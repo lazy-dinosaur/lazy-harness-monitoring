@@ -170,7 +170,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-reference-need",
       "label": "negative",
       "slices": [
@@ -179,7 +179,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-reference-none",
       "label": "negative",
       "slices": [
@@ -188,7 +188,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-rule-conflict",
       "label": "negative",
       "slices": [
@@ -197,7 +197,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-rule-compliant",
       "label": "negative",
       "slices": [
@@ -206,7 +206,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-memory-durable",
       "label": "positive",
       "slices": [
@@ -215,7 +215,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-memory-transient",
       "label": "negative",
       "slices": [
@@ -224,7 +224,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-loop-first",
       "label": "negative",
       "slices": [
@@ -233,7 +233,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-loop-second",
       "label": "negative",
       "slices": [
@@ -242,7 +242,7 @@
       ]
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-loop-third",
       "label": "negative",
       "slices": [
@@ -354,12 +354,12 @@
       "point": "assistant.message"
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-memory-durable",
       "point": "user.message"
     },
     {
-      "moduleId": "review.memory-candidate",
+      "moduleId": "synthetic.memory-candidate",
       "frameId": "dev-memory-transient",
       "point": "user.message"
     },

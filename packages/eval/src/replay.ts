@@ -1,6 +1,8 @@
 import { canonicalJson, canonicalJsonHash, createInMemoryWorkerPort, effectiveMonitoringJobs, effectiveMonitoringStage, resolveMonitoringWatch, type MonitoringModelBackend, type MonitoringModelRequest, type WorkerCompletion, type WorkerExecutionPort, type WorkerJobRequest } from '@lazy-harness/monitoring-core'
 import { createRealtimeSelectionPipeline, type RealtimeSelectionPacket } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
 import { ApprovedBudgetGate, MonitoringModuleRuntime, monitoringReportId, watchModuleFromDeclaration, type JobResult, type ReportDeliveryReceipt, type ReportEnqueueReceipt } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
+import { createMemoryMonitor, memoryQuestion, MEMORY_MODULE_ID, type MemoryInput } from '@lazy-harness/monitoring-module-memory'
+import { createInMemoryReviewSinkPort, type InputPortContext } from '@lazy-harness/monitoring-core/host'
 import { referencesHandlers, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
 import { createRuleSteeringHandlers, RULE_STEERING_MODULE_ID } from '@lazy-harness/monitoring-module-rule-steering'
 import { redactSecrets } from '@lazy-harness/monitoring-core/engine/monitoring-core-redaction.ts'
@@ -54,6 +56,43 @@ export async function replay(manifestInput: RunManifest, datasetInput: ReplayDat
   let random = manifest.seed
   const tick = () => { random = (Math.imul(random, 1664525) + 1013904223) >>> 0; return 1 + random % 5 }
   for (const m of modules) {
+    if (m.id === MEMORY_MODULE_ID) {
+      let source: MemoryInput | undefined, context: InputPortContext | undefined
+      const sink = createInMemoryReviewSinkPort({ context: () => context })
+      const sinkPort = { ...sink.port, async enqueue(c: Parameters<typeof sink.port.enqueue>[0], signal?: AbortSignal) {
+        const scripted = dataset.outputs.find(o => o.moduleId === m.id && o.frameId === source?.frameId)
+        if (scripted?.delivery !== 'delivered') return { protocolVersion: 1 as const, candidateId: c.candidateId, status: scripted?.delivery === 'failed' ? 'refused' as const : 'unknown' as const }
+        return sink.port.enqueue(c, signal)
+      } }
+      const monitor = createMemoryMonitor({ stage: m.knobs.stage, reviewSink: sinkPort, source: { capture: () => source, isCurrent: s => s === source || canonicalJsonHash(s) === canonicalJsonHash(source ?? null) } })
+      try {
+        for (const [frameIndex, frame] of dataset.frames.entries()) {
+          const script = dataset.outputs.find(o => o.moduleId === m.id && o.frameId === frame.id)
+          source = script?.select && script.worker !== 'failed' ? script.memory : undefined
+          if (source && (source.evidence.length > m.knobs.material.maxSources || source.evidence.some(e => Buffer.byteLength(e.text) > m.knobs.material.maxSourceBytes) || source.evidence.reduce((n, e) => n + Buffer.byteLength(e.text), 0) > m.knobs.material.maxBytes)) source = undefined
+          context = source?.context
+          if (frame.sourceEvent === 'session_start') continue
+          if (['session_before_compact', 'session_compact', 'session_compact_failed', 'session_before_switch', 'session_before_fork', 'session_before_tree', 'session_tree', 'session_shutdown'].includes(frame.sourceEvent)) { monitor.close(); sink.close() }
+          const matchedPoints = m.knobs.watchPoints.filter(p => resolveMonitoringWatch([p]).matches(frame))
+          const admitted = !!matchedPoints.length && m.knobs.stage !== 'off'
+          const controller = new AbortController(); if (script?.cancel) controller.abort()
+          const answer = admitted ? await monitor.onOpportunity(frame, script!.mode, controller.signal) : { mode: 'skip' as const, reason: 'not-admitted', prepared: false }
+          const accepted = answer.receipt?.status === 'accepted-volatile'
+          const candidate = sink.inspect().find(c => c.candidateId === answer.receipt?.candidateId)
+          const material = (source?.evidence ?? []).map(e => ({ id: e.id, kind: e.kind, version: e.version, provenance: { owner: 'host', observationId: null, sessionId: frame.sessionId, binding: frame.binding, sourceEvent: e.eventType, cursor: e.cursor, step: frameIndex, stage: 'host-provided' }, content: identity(e.text, consent) }))
+          retention.add({ schemaVersion: 'monitoring-eval-trace/v1', manifestHash, opportunityId: `${m.id}/${frame.id}`, frameIndex, moduleId: m.id, frameId: frame.id, sourceEvent: frame.sourceEvent,
+            input: identity({ frame, ...(source ? { evidence: source } : {}), question: memoryQuestion }, consent), provenance: { sessionId: frame.sessionId, binding: frame.binding, epoch: frame.epoch, cursor: frame.cursor, snapshotRevision: frame.snapshot.revision, canonicalHash: canonicalJsonHash(frame.snapshot.canonicalHash) },
+            trigger: { matchedPoints, admittedPoints: admitted ? matchedPoints : [], unavailable: !frame.available || !frame.snapshot.available }, selection: { status: [], considered: material, selected: admitted && script?.select ? material : [] },
+            judgement: { mode: admitted ? script!.mode : 'none', inputs: [], raw: admitted ? [identity({ mode: script!.mode, source: 'scripted-typed-decision' }, consent)] : [] },
+            work: { verification: [], dispatched: answer.prepared ? [identity({ template: 'exact-span/v1' }, consent)] : [], completion: answer.prepared ? [{ status: 'completed', certainty: 'terminal', value: identity({ answer, ...(candidate ? { candidate } : {}) }, consent) }] : [], outcomes: [{ status: answer.prepared ? 'prepared' : 'skipped', reason: identity(answer.reason, consent) }] },
+            report: { enqueue: [], delivery: [], censored: answer.prepared && !accepted }, cancellation: { requested: script?.cancel ?? false, observed: controller.signal.aborted }, proposed: answer.prepared, received: accepted,
+            latency: { unit: 'logical-ms', captureToJudge: admitted ? tick() : null, judgeToWorker: null, workerToReady: answer.prepared ? tick() : null, readyToReceipt: accepted ? tick() : null, endToEnd: null },
+            cost: { kind: 'stub-estimate', judgeCalls: 0, verifierCalls: 0, workerCalls: answer.prepared ? 1 : 0, usd: 0 },
+          })
+        }
+      } finally { monitor.close(); sink.close() }
+      continue
+    }
     let script: StubOutput | undefined, turn: number | undefined
     let verification: TraceRecord['work']['verification'] = []
     const ruleHandlers = createRuleSteeringHandlers(async (task, signal) => {

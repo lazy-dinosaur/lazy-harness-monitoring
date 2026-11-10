@@ -2,6 +2,8 @@ import { canonicalJsonHash, effectiveMonitoringJobs, effectiveMonitoringStage, e
 import { referencesBinding, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
 import { RULE_STEERING_MODULE_ID } from '@lazy-harness/monitoring-module-rule-steering'
 import { isRuleSteeringEvalRegistration } from './rule-steering.ts'
+import { MEMORY_MODULE_ID, parseMemoryInput, type MemoryInput } from '@lazy-harness/monitoring-module-memory'
+import { isMemoryEvalRegistration } from './memory.ts'
 import { parseObservationFrame, type ObservationFrame } from '@lazy-harness/monitoring-core/host'
 import { array, enumeration, hashSchema, idSchema, integer, object, parse, str, type Schema } from './schema.ts'
 
@@ -24,6 +26,8 @@ export function parseModules(input: unknown): EvalModule[] {
       && canonicalJsonHash(d) === referencesBinding.declarationHash
       && canonicalJsonHash(m.grants) === canonicalJsonHash(referencesBinding.grants)
     if (m.id === REFERENCES_MODULE_ID && !registeredReferences) throw new Error('references registration must match the shipped binding')
+    const registeredMemory = isMemoryEvalRegistration(m)
+    if ((m.id === MEMORY_MODULE_ID || d.needs?.some(n => n.adapter === 'memory.review-sink')) && !registeredMemory) throw new Error('memory registration must match shipped private binding')
     const registeredRules = isRuleSteeringEvalRegistration(m)
     if (m.id === RULE_STEERING_MODULE_ID && !registeredRules) throw new Error('rule-steering registration must match the shipped binding or offline shadow probe')
     if (d.jobs.length !== 1 || d.jobs[0].riskTier !== 'read-only' || (!registeredReferences && !registeredRules && (m.grants.actions.length || d.jobs[0].grants.actions.length))) throw new Error('offline evaluation permits one read-only job and no actions')
@@ -42,11 +46,12 @@ export function parseModules(input: unknown): EvalModule[] {
   return modules
 }
 export function declarationHash(m: EvalModule) { return canonicalJsonHash({ declaration: m.declaration, grants: m.grants, ceiling: m.ceiling, privateCandidate: m.privateCandidate }) }
-export type StubOutput = { moduleId: string; frameId: string; mode: 'run' | 'skip' | 'defer'; select: boolean; worker: 'prepared' | 'failed'; delivery: 'delivered' | 'no-boundary' | 'failed'; cancel: boolean; verifications?: { ruleId: string; mode: 'run' | 'skip' | 'defer' | 'failed' }[] }
+export type StubOutput = { moduleId: string; frameId: string; mode: 'run' | 'skip' | 'defer'; select: boolean; worker: 'prepared' | 'failed'; delivery: 'delivered' | 'no-boundary' | 'failed'; cancel: boolean; memory?: MemoryInput; verifications?: { ruleId: string; mode: 'run' | 'skip' | 'defer' | 'failed' }[] }
 export type ReplayDataset = { synthetic: true; id: string; version: string; split: 'dev' | 'holdout'; frames: ObservationFrame[]; outputs: StubOutput[] }
-const outputSchema = object({ moduleId: idSchema, frameId: idSchema, mode: enumeration('run', 'skip', 'defer'), select: { type: 'boolean' }, worker: enumeration('prepared', 'failed'), delivery: enumeration('delivered', 'no-boundary', 'failed'), cancel: { type: 'boolean' }, verifications: array(object({ ruleId: idSchema, mode: enumeration('run', 'skip', 'defer', 'failed') }), 8) }, ['verifications'])
+const outputSchema = object({ moduleId: idSchema, frameId: idSchema, mode: enumeration('run', 'skip', 'defer'), select: { type: 'boolean' }, worker: enumeration('prepared', 'failed'), delivery: enumeration('delivered', 'no-boundary', 'failed'), cancel: { type: 'boolean' }, memory: {}, verifications: array(object({ ruleId: idSchema, mode: enumeration('run', 'skip', 'defer', 'failed') }), 8) }, ['verifications', 'memory'])
 export function parseDataset(input: unknown): ReplayDataset {
   const d = parse<ReplayDataset>(object({ synthetic: { const: true }, id: idSchema, version: idSchema, split: enumeration('dev', 'holdout'), frames: array({}, 512, 1), outputs: array(outputSchema, 4096) }), input)
+  d.outputs.forEach(o => { if (o.memory !== undefined) parseMemoryInput(o.memory) })
   d.frames.forEach(f => { parseObservationFrame(f); parse(idSchema, f.id); parse(idSchema, f.sessionId); parse(idSchema, f.snapshot.revision) })
   if (d.frames[0].sourceEvent !== 'session_start' || new Set(d.frames.map(f => f.id)).size !== d.frames.length) throw new Error('replay needs initial session_start and unique frame ids')
   if (new Set(d.outputs.map(o => `${o.moduleId}/${o.frameId}`)).size !== d.outputs.length || d.outputs.some(o => !d.frames.some(f => f.id === o.frameId))) throw new Error('duplicate/unknown scripted opportunity')

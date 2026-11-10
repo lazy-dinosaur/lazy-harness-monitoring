@@ -138,7 +138,7 @@ describe('labels are scoring-only and denominators include failures', () => {
     expect(s.modules.every(m => m.proposal.TP === 1 && m.proposal.FP === 0 && m.proposal.FN === 0 && m.triggers.extra.length === 0 && m.triggers.missed.length === 0)).toBe(true)
     expect(s.modules.every(m => m.receipts.success === 1 && m.cost.opportunityDenominator === 9 && m.latency.endToEnd.samples === 1)).toBe(true)
     expect(s.modules.find(m => m.moduleId === 'review.references')!.proposal.unresolvedSilent).toBe(1)
-    expect(baseline.trace.find(r => r.moduleId === 'review.memory-candidate' && r.received)!.report.delivery[0].kind).toBe('private-candidate')
+    expect(baseline.trace.find(r => r.moduleId === 'synthetic.memory-candidate' && r.received)!.report.delivery[0].kind).toBe('private-candidate')
     expect(baseline.trace.find(r => r.moduleId === 'review.references' && r.received)!.report.delivery[0]).toMatchObject({ kind: 'hook-boundary', evidence: 'synthetic' })
   })
   test('technical failure/defer/skip on clear positive is FN, never removed', async () => {

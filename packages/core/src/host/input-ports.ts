@@ -90,7 +90,10 @@ export function evaluateReadRecordSnapshot(request: ReadRecordRequest, snapshot:
 export const ReviewCandidateSchema = Type.Object({ schemaVersion: Type.Literal('memory-candidate/v1'), candidateId: text(), scope: InputPortScopeSchema,
   sourceRevision: text(), grantRevision: text(), subjectKey: text(), dedupeKey: text(), status: Type.Literal('review-only'), notApproved: Type.Literal(true), notWritten: Type.Literal(true),
   claim: Type.Object({ kind: Type.Union([Type.Literal('project-fact'), Type.Literal('decision'), Type.Literal('constraint'), Type.Literal('preference')]), text: Type.String({ minLength: 1, maxLength: 2048 }), language: text() }, strict),
-  evidenceRefs: Type.Array(Type.Object({ documentId: text(), documentVersion: text(), sourceEventId: text(), sourceRevision: text(), grantRevision: text(), attestationId: text(), span: text() }, strict), { minItems: 1, maxItems: 8 }),
+  project: Type.Optional(Type.Object({ id: text(), applicability: text() }, strict)),
+  predecessorCandidateId: Type.Optional(text()), provenanceState: Type.Optional(Type.Literal('checked')), contested: Type.Optional(Type.Literal(false)), missingEvidence: Type.Optional(Type.Array(text(), { maxItems: 0 })),
+  preparation: Type.Optional(Type.Object({ triggerId: text(), declarationHash: text(), questionHash: text(), configHash: text(), snapshotRevision: text(), stage: Type.Literal('shadow'), templateVersion: text() }, strict)),
+  evidenceRefs: Type.Array(Type.Object({ documentId: text(), documentVersion: text(), sourceEventId: text(), sourceRevision: text(), grantRevision: text(), attestationId: text(), span: text(), namespace: Type.Optional(text()), actor: Type.Optional(text()), eventType: Type.Optional(text()), cursor: Type.Optional(count()), sourceRecordRevision: Type.Optional(text()), spanHash: Type.Optional(text()), role: Type.Optional(Type.Literal('supporting')) }, strict), { minItems: 1, maxItems: 8 }),
 }, strict)
 export type ReviewCandidate = Readonly<Static<typeof ReviewCandidateSchema>>
 export type ReviewSinkReceipt = Readonly<{ protocolVersion: 1; candidateId: string; status: 'accepted-volatile' | 'refused' | 'unknown'; reason?: string }>
