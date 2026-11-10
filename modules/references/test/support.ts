@@ -1,8 +1,8 @@
-import { createHandlerWorkerPort, effectiveMonitoringJobs, type MonitoringModelBackend, type MonitoringModelRequest } from '@lazy-harness/monitoring-core'
+import { createHandlerWorkerPort, type MonitoringModelBackend, type MonitoringModelRequest } from '@lazy-harness/monitoring-core'
 import { parseObservationFrame } from '@lazy-harness/monitoring-core/host'
 import { createRealtimeSelectionPipeline } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
 import { ApprovedBudgetGate, MonitoringModuleRuntime, watchModuleFromDeclaration, type JobHandler, type RuntimeOptions } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
-import { referencesBinding, referencesDeclaration, referencesHandlers, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
+import { createReferencesRegistration, type ReferencesRegistrationOptions, referencesBinding, referencesDeclaration, referencesHandlers, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
 
 // Hand-authored toy catalog; no external registry or session material.
 export const catalog = [
@@ -11,9 +11,9 @@ export const catalog = [
 ]
 export const evidence = catalog.map(d => ({ id: d.id, kind: d.kind, version: d.version, text: d.content }))
 export const trigger = { moduleId: REFERENCES_MODULE_ID, eventId: 'request-1', sessionId: 'toy-session', evidence }
-export const jobs = effectiveMonitoringJobs(referencesDeclaration, undefined, '/jobs')!
-export function runtime(report?: RuntimeOptions['report'], handlers: Readonly<Record<string, JobHandler>> = referencesHandlers) {
-  return new MonitoringModuleRuntime({ modules: [{ moduleId: REFERENCES_MODULE_ID, declaration: referencesDeclaration, declarationHash: referencesBinding.declarationHash!, jobs }], handlers, workerPort: createHandlerWorkerPort(handlers), budget: new ApprovedBudgetGate(), report })
+export const jobs = createReferencesRegistration().jobs
+export function runtime(options: ReferencesRegistrationOptions = {}, report?: RuntimeOptions['report'], handlers: Readonly<Record<string, JobHandler>> = referencesHandlers) {
+  return new MonitoringModuleRuntime({ modules: [createReferencesRegistration(options)], handlers, workerPort: createHandlerWorkerPort(handlers), budget: new ApprovedBudgetGate(), report })
 }
 export function frame(n: number, sourceEvent = 'input', text = 'How should I build the lantern?') {
   return parseObservationFrame({ id: `toy-${n}`, cursor: n, sourceEvent, kind: sourceEvent, sessionId: 'toy-session', binding: 1, epoch: 1, payload: { source: 'interactive', text }, available: true,

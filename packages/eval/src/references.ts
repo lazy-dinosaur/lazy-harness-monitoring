@@ -1,4 +1,4 @@
-import { referencesBinding, referencesDeclaration, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
+import { createReferencesRegistration, referencesBinding } from '@lazy-harness/monitoring-module-references'
 import type { Reference } from '@lazy-harness/monitoring-core'
 import { parseModules, stubBinding, type EvalModule } from './contracts.ts'
 
@@ -6,11 +6,12 @@ import { parseModules, stubBinding, type EvalModule } from './contracts.ts'
  * Replays stateless template delivery. A real host must inject its own AlreadyRead ledger.
  */
 export function createReferencesEvalModule(references: readonly Reference[]): EvalModule {
+  const registration = createReferencesRegistration({ stage: 'active' })
   const material = { maxSources: 16, maxBytes: 16384, maxSourceBytes: 8192 }
   return parseModules([{
-    id: REFERENCES_MODULE_ID, declaration: referencesDeclaration, grants: referencesBinding.grants,
+    id: registration.moduleId, declaration: registration.declaration, grants: referencesBinding.grants,
     ceiling: { material, timeoutMs: 2000, models: [stubBinding] },
-    knobs: { watchPoints: ['input'], material, historyTurns: 4, question: referencesDeclaration.purpose.question, model: stubBinding, timeoutMs: 2000, report: 'always', stage: 'active' },
+    knobs: { watchPoints: ['input'], material, historyTurns: 4, question: registration.declaration.purpose.question, model: stubBinding, timeoutMs: 2000, report: 'always', stage: registration.stage },
     privateCandidate: false, references,
   }])[0]
 }

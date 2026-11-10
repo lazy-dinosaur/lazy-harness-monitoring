@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { artifactBytes, createManifest, parseModules, replay } from '@lazy-harness/monitoring-eval'
-import { referencesBinding, referencesQuestion } from '@lazy-harness/monitoring-module-references'
+import { createReferencesRegistration, referencesBinding, referencesQuestion } from '@lazy-harness/monitoring-module-references'
 import { referencesFixture } from '../fixtures/references.ts'
 
 test('shipped references module scripted replay is byte-identical and executes the real template', async () => {
@@ -8,6 +8,9 @@ test('shipped references module scripted replay is byte-identical and executes t
   const manifest = createManifest({ runId: 'toy-references-proof', codeCommit: 'b'.repeat(40), modules, dataset, seed: 17, contentConsent: true })
   expect(manifest.modules[0].coreDeclarationHash).toBe(referencesBinding.declarationHash!)
   expect(modules[0].knobs.question).toEqual(referencesQuestion)
+  const registration = createReferencesRegistration({ stage: 'active' })
+  expect(modules[0].knobs.stage).toBe(registration.stage)
+  expect(modules[0].declaration).toEqual(registration.declaration)
   const a = await replay(manifest, dataset, modules), b = await replay(manifest, dataset, modules)
   expect(artifactBytes(a)).toBe(artifactBytes(b))
   expect(a.trace.map(r => r.proposed)).toEqual([true, false, false])

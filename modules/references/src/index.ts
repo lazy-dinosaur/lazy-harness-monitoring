@@ -1,5 +1,5 @@
-import { configurationFailure, freezeMonitoringData, parseMonitoringJsonData, validateMonitoringModuleDeclaration, type MonitoringModuleBinding } from '@lazy-harness/monitoring-core'
-import type { JobHandler } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
+import { configurationFailure, effectiveMonitoringJobs, effectiveMonitoringStage, freezeMonitoringData, parseMonitoringJsonData, validateMonitoringModuleDeclaration, type MonitoringModuleBinding, type MonitoringModuleDeclaration, type MonitoringRunStage } from '@lazy-harness/monitoring-core'
+import type { JobHandler, RegisteredModule } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 
 export const REFERENCES_MODULE_ID = 'context.references'
 /** Broad gap-filler purpose. The host's read ledger, not the judge, removes redundancy. */
@@ -37,6 +37,22 @@ export const referencesBinding: MonitoringModuleBinding = Object.freeze({
     return { id: REFERENCES_MODULE_ID, eventKinds: ['user.input'], referenceKinds: grants.referenceKinds, allowedActions: grants.actions, question: referencesQuestion, run: () => [] }
   },
 })
+/** A caller may tighten the declaration ceiling, never raise it. Delivery requires explicit active opt-in. */
+export type ReferencesRegistrationOptions = Readonly<{ stage?: MonitoringRunStage; maxStage?: MonitoringModuleDeclaration['maxStage'] }>
+/** Official runtime registration: never rely on the low-level runtime's omitted-stage default. */
+export function createReferencesRegistration(options: ReferencesRegistrationOptions = {}): RegisteredModule & { readonly stage: MonitoringRunStage } {
+  const stage = options.stage ?? 'observe'
+  if (!['off', 'observe', 'shadow', 'active'].includes(stage)) configurationFailure('STAGE_RAISED', '/stage', 'Unknown references run stage')
+  let declaration = referencesDeclaration, declarationHash = validated.hash
+  if (options.maxStage !== undefined) {
+    if (!['observe', 'shadow', 'active'].includes(options.maxStage)) configurationFailure('STAGE_RAISED', '/maxStage', 'Unknown references declaration ceiling')
+    effectiveMonitoringStage(referencesDeclaration, options.maxStage, '/maxStage')
+    const tightened = validateMonitoringModuleDeclaration({ ...referencesDeclaration, maxStage: options.maxStage }, grants)
+    declaration = tightened.declaration; declarationHash = tightened.hash
+  }
+  effectiveMonitoringStage(declaration, stage, '/stage')
+  return Object.freeze({ moduleId: REFERENCES_MODULE_ID, declaration, declarationHash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')!, stage })
+}
 /** Host-owned session.read-records ledger. Host clears it after compaction/session replacement.
  * IDs intentionally preserve legacy semantics: reading one version suppresses all versions until reset.
  * Returning a snapshot prevents handler mutation of host state. No ledger is kept in this package.
