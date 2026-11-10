@@ -49,6 +49,66 @@ closed and reconciled, never as an LRU/TTL optimization. Restart durability rema
 `ApprovedBudgetGate(maxWindows = 1024).revoke(moduleId, jobId?)` explicitly closes a budget window;
 its reservations remain until raw settlement. Reapproval cannot replace a live reservation.
 
+## Optional restart state (R7)
+
+**Additive API; no BREAKING change in this batch.** Without `state`, runtime and mailbox remain
+in-memory. No host adapter or module is automatically registered for persistence.
+
+Core exports `StatePersistencePort`, `StateBinding`, `StateSnapshot`, `StateLimits`,
+`StateCommitReceipt`, `MonitoringStateSession`, `openMonitoringState`, `createMemoryStatePort`,
+`runStatePortConformance` and its `StatePortFactory` from `@lazy-harness/monitoring-core`.
+The file backend is **only** `createFileStatePort` from `@lazy-harness/monitoring-core/state-file`;
+the default export graph does not import filesystem storage. No dependency was added.
+
+```ts
+import { openMonitoringState } from '@lazy-harness/monitoring-core'
+import { createFileStatePort } from '@lazy-harness/monitoring-core/state-file'
+
+// Host supplies a trusted existing private directory and authoritative StateBinding:
+// bindingId, moduleId, declarationHash, configHash, modelFingerprint, and InputPortScope.
+const state = openMonitoringState(createFileStatePort(privateDirectory, binding), binding)
+// Pass the SAME recovered session to one module's MonitoringModuleRuntime({ ...options, state })
+// and ContextCarryMailbox({ ...carryOptions, state }). Do not also supply idempotency.
+// After authoritative delivery acknowledgement (not enqueue acceptance):
+// state.acknowledgeDelivery(itemId, authoritativeReceiptId)
+```
+
+Opening synchronously validates schema v1 and the complete bounded snapshot, commits recovery and
+increments the owner fence before admission. Reopen on host generation changes; do not reuse an old
+session. Binding/session/branch/config/declaration/model mismatches fail closed, rather than guessing
+migration authority. The host must reacquire current observation, grants, sources and approvals;
+persisted metadata is not authorization. Only explicitly consented report/carry text is stored; trigger
+text, closures, promises, signals, read-record snapshots and review candidates are not serialized.
+
+- Existing idempotency hashing is unchanged. Terminal outcomes/effect receipts and uncertain keys
+  survive diagnostic eviction. `state.view()` exposes the recovered ledger, not runtime `outcomes`.
+- Locally queued-but-unstarted work becomes rejected/dropped; **no work is auto-replayed**. Work that
+  crossed an external worker boundary becomes uncertain, even if that port had only queued it.
+  `WorkerJobRequest.stateAttempt` carries stable key/operation ID and owner fence to that port.
+  Recovered unresolved raw attempts block all new dispatch until out-of-band authoritative
+  reconciliation; no automatic reconciliation or forced capacity release is supplied.
+- Costs retain the full declared per-run caps (including unstarted drops), not just observed spend.
+  Current approvals remain required, and a new budget gate/reapproval cannot reset these durable
+  charges. This deliberately over-reserves and may exhaust capacity early.
+- Pending mailbox items recover only at the same host generations, then revalidate scope, source,
+  age and carry turn at `take`. Delivery intent is committed **before** exposing text; missing ack
+  remains delivery-uncertain and is never injected again automatically. Seen tombstones survive.
+  Report intent/enqueue receipts are separate from delivery receipts; reports are never auto-reenqueued.
+  Advice can be lost at crash boundaries. Exactly-once external delivery is **not** claimed.
+- Synchronous IO errors/unknown commits poison the session: reopen/read/reconcile, never fall back
+  to empty memory. Identical revision+bytes commit retries are idempotent; changed bytes conflict.
+  Bounds default to 4096 work keys, 4096 mailbox identities and 4 MiB per snapshot; smaller limits
+  are allowed. Exhaustion refuses, never evicts protection. No TTL, compaction or partition deletion API.
+
+The file reference uses one SHA-256-named directory per binding/module/session/branch, strict versioned
+JSON plus checksum, a fixed temp file, file fsync, atomic rename and directory fsync. Missing state in
+an existing partition is ambiguous and refused. Unsupported fsync fails closed; no durability downgrade.
+Use **one serial writer on a trusted local filesystem**. No cross-process lock/consensus, encryption,
+backup/restore, automatic migration, global directory-count bound, real process-kill or power-loss
+qualification is supplied. The host owns root-directory/partition lifecycle and storage consent.
+The read-record/review-sink ports remain unchanged; review retention is still volatile.
+See [R7 rules and remaining limits](docs/qualification/p2-reliability-review.md#r7-restart-durability--implemented-conservative-v1).
+
 ## Trigger and report compatibility changes
 
 - **BREAKING — Default stage changed to observe:** an omitted module run stage now selects `observe`

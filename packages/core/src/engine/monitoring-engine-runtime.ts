@@ -3,6 +3,7 @@
 // Turns a trigger (module matched its purpose + selected evidence) into the module's declared background jobs and
 // enforces the ENGINE RULES that are not module options: loop guard, idempotency, user-approved budget gate before
 // any job that declares cost, uncertain effect = terminal stop (never retried), risk-tier output limits, report mode.
+import type { MonitoringStateSession } from '../state/state-persistence.ts'
 import { assertMonitoringWatchable, resolveMonitoringWatch } from '../sdk/trigger-points.ts'
 import { createInMemoryWorkerPort } from '../sdk/worker-execution-memory.ts'
 import type { WorkerExecutionPort, WorkerExecutionLimits, WorkerCompletion } from '../sdk/worker-execution.ts'
@@ -42,7 +43,7 @@ function parseWorkerCompletion(input: unknown): WorkerCompletion<JobResult> {
 }
 
 export type JobHandler = Readonly<{ run(context: JobContext): JobResult | Promise<JobResult>; idempotencyKey?(trigger: Trigger): string | undefined }>
-export type WorkerJobRequest = Readonly<{ handlerId: string; context: Omit<JobContext, 'signal'> }>
+export type WorkerJobRequest = Readonly<{ handlerId: string; context: Omit<JobContext, 'signal'>; stateAttempt?: Readonly<{ key: string; operationId: string; fence: number }> }>
 /** Compatibility adapter: trusted existing handlers run through the same worker port contract. */
 export function createHandlerWorkerPort(handlers: Readonly<Record<string, JobHandler>>, limits: Partial<WorkerExecutionLimits> = {}): WorkerExecutionPort<WorkerJobRequest, JobResult> {
   return createInMemoryWorkerPort((request: WorkerJobRequest, signal) => {
@@ -61,14 +62,14 @@ export type RegisteredModule = Readonly<{ moduleId: string; declaration: Monitor
 
 /** Explicit user-approved budget windows; never created implicitly. Reservation = the job's declared per-run caps. */
 export class ApprovedBudgetGate {
-  private readonly windows = new Map<string, { caps: Partial<Record<CostKind, number>>; used: Partial<Record<CostKind, number>>; reserved: Partial<Record<CostKind, number>>; revoked: boolean }>()
+  private readonly windows = new Map<string, { caps: Partial<Record<CostKind, number>>; used: Partial<Record<CostKind, number>>; reserved: Partial<Record<CostKind, number>>; revoked: boolean; approvedBy: string }>()
   constructor(private readonly maxWindows = 1024) { if (!Number.isSafeInteger(maxWindows) || maxWindows < 1) throw new Error('invalid budget window bound') }
   approve(scope: Readonly<{ moduleId: string; jobId?: string; caps: Partial<Record<CostKind, number>>; approvedBy: string }>) {
     if (!scope.approvedBy || Object.values(scope.caps).some(v => typeof v !== 'number' || !Number.isFinite(v) || !(v > 0))) throw new Error('invalid budget approval')
     const key = scope.jobId ? `${scope.moduleId}.${scope.jobId}` : scope.moduleId, prior = this.windows.get(key)
     if (prior && Object.values(prior.reserved).some(n => n! > 0)) throw new Error('budget window has live reservations')
     if (!prior && this.windows.size >= this.maxWindows) throw new Error('budget window capacity')
-    this.windows.set(key, { caps: { ...scope.caps }, used: {}, reserved: {}, revoked: false })
+    this.windows.set(key, { caps: { ...scope.caps }, used: {}, reserved: {}, revoked: false, approvedBy: scope.approvedBy })
   }
   /** Explicit scope expiry. In-flight reservations remain owned until raw settlement. */
   revoke(moduleId: string, jobId?: string): void {
@@ -98,6 +99,10 @@ export class ApprovedBudgetGate {
     }
     return { lease }
   }
+  approval(moduleId: string, jobId: string) {
+    const windowKey = this.windows.has(`${moduleId}.${jobId}`) ? `${moduleId}.${jobId}` : moduleId, w = this.windows.get(windowKey)
+    return w && !w.revoked ? { approvalId: w.approvedBy, windowKey, approvedCaps: { ...w.caps } } : undefined
+  }
   usage(moduleId: string, jobId?: string) { const w = this.windows.get(jobId ? `${moduleId}.${jobId}` : moduleId); return w ? { caps: { ...w.caps }, used: { ...w.used }, reserved: { ...w.reserved } } : undefined }
 }
 
@@ -112,7 +117,7 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
   getStatus() { return { keys: this.m.size, maxKeys: this.maxKeys } }
 }
 
-export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; report?(report: Report): ReportEnqueueReceipt; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number; maxOutcomes?: number; workerPort?: WorkerExecutionPort<WorkerJobRequest, JobResult> }>
+export type RuntimeOptions = Readonly<{ modules: readonly RegisteredModule[]; handlers: Readonly<Record<string, JobHandler>>; budget: ApprovedBudgetGate; idempotency?: IdempotencyStore; /** One recovered module/binding session, shared with its mailbox. Mutually exclusive with idempotency. */ state?: MonitoringStateSession; report?(report: Report): ReportEnqueueReceipt; /** task154 judgement trace sink: one `job` row per outcome. */ trace?(row: Readonly<Record<string, unknown>>): void; maxOriginDepth?: number; jobTimeoutMs?: number; maxActive?: number; maxQueued?: number; maxWork?: number; maxOutcomes?: number; workerPort?: WorkerExecutionPort<WorkerJobRequest, JobResult> }>
 
 export class MonitoringModuleRuntime {
   private readonly modules = new Map<string, RegisteredModule>()
@@ -126,14 +131,19 @@ export class MonitoringModuleRuntime {
     const limits = { ...(options.maxActive !== undefined ? { maxActive: options.maxActive } : {}), ...(options.maxQueued !== undefined ? { maxQueued: options.maxQueued } : {}), ...(options.maxWork !== undefined ? { maxWork: options.maxWork } : {}), ...(options.jobTimeoutMs !== undefined ? { timeoutMs: options.jobTimeoutMs } : {}) }
     if (Object.entries(limits).some(([key, n]) => !Number.isSafeInteger(n) || n < (key === 'maxQueued' ? 0 : 1)) || (limits.timeoutMs ?? 1) > 2147483647) throw new Error('invalid runtime work limits')
     if (options.workerPort && Object.entries(limits).some(([key, n]) => options.workerPort!.limits[key as keyof WorkerExecutionLimits] > n)) throw new Error('worker port exceeds runtime limits')
-    this.work = options.workerPort ?? createHandlerWorkerPort(options.handlers, limits)
+    if (options.state && (options.idempotency || options.modules.length !== 1 || options.modules[0]!.moduleId !== options.state.binding.moduleId || options.modules[0]!.declarationHash !== options.state.binding.declarationHash)) throw Error('invalid runtime state binding')
+    options.state?.assertCurrent()
+    this.work = options.workerPort ?? (options.state ? createInMemoryWorkerPort<WorkerJobRequest, JobResult>((request, signal) => {
+      options.state!.dispatch(request.stateAttempt!.key) // durable intent immediately before local execution, not queue admission
+      return options.handlers[request.handlerId]!.run(Object.freeze({ ...request.context, signal }))
+    }, limits) : createHandlerWorkerPort(options.handlers, limits))
     for (const m of options.modules) {
       assertMonitoringWatchable(m.declaration.watch.events)
       if (this.modules.has(m.moduleId)) throw new Error('duplicate runtime module')
       for (const j of m.jobs) if (j.enabled && !options.workerPort && typeof options.handlers[`${m.moduleId}.${j.id}`]?.run !== 'function') throw new Error(`missing job handler ${m.moduleId}.${j.id}`)
       this.modules.set(m.moduleId, m)
     }
-    this.store = options.idempotency ?? new MemoryIdempotencyStore()
+    this.store = options.state ?? options.idempotency ?? new MemoryIdempotencyStore()
   }
   /** Auto-started for handler compatibility. Restart only after raw idle; lifetime count never resets. */
   start() { this.work.start() }
@@ -141,8 +151,10 @@ export class MonitoringModuleRuntime {
   dispose() { this.work.dispose() }
   idle() { return this.work.idle() }
   getStatus() { return Object.freeze({ ...this.work.getStatus(), outcomesRetained: this.outcomeLog.length, outcomesEvicted: this.outcomesEvicted }) }
-  private record(o: JobOutcome) { this.outcomeLog.push(Object.freeze(o)); if (this.outcomeLog.length > (this.options.maxOutcomes ?? 256)) { this.outcomeLog.shift(); this.outcomesEvicted++ }; try { this.options.trace?.({ type: 'job', ...o, stage: this.modules.get(o.moduleId)?.stage ?? 'observe' }) } catch { /* tracing never changes outcomes */ } return o }
+  private record(o: JobOutcome) { this.options.state?.finish(o); this.outcomeLog.push(Object.freeze(o)); if (this.outcomeLog.length > (this.options.maxOutcomes ?? 256)) { this.outcomeLog.shift(); this.outcomesEvicted++ }; try { this.options.trace?.({ type: 'job', ...o, stage: this.modules.get(o.moduleId)?.stage ?? 'observe' }) } catch { /* tracing never changes outcomes */ } return o }
   async onTrigger(trigger: Trigger, signal: AbortSignal = new AbortController().signal): Promise<readonly JobOutcome[]> {
+    this.options.state?.assertCurrent()
+    if (this.options.state && trigger.sessionId !== this.options.state.binding.scope.sessionId) throw Error('trigger state scope mismatch')
     const state = this.work.getStatus().state
     if (state !== 'running') return [this.record({ moduleId: trigger.moduleId, jobId: '*', eventId: trigger.eventId, status: 'skipped', reason: `runtime_${state}`, reported: false })]
     const m = this.modules.get(trigger.moduleId)
@@ -168,18 +180,29 @@ export class MonitoringModuleRuntime {
     const key = canonicalJsonHash([m.moduleId, m.declarationHash, job.id, idem, material])
     const prior = this.store.get(key)
     if (prior) return skip(`duplicate:${prior}`, key)
+    const persistence = this.options.state
+    // Only recovered unresolved work blocks new admissions; live work uses the worker's own queue caps.
+    const saved = persistence?.view()
+    if (saved?.work.some(w => !w.rawSettled && w.fence !== saved.fence)) return skip('persistence_unresolved_work', key)
     let lease: (BudgetLease & { settle(): void }) | undefined
     if (job.declared.cost) {
       const r = this.options.budget.reserve(m.moduleId, job.id, job.declared.cost.caps as Partial<Record<CostKind, number>>)
       if (!r.lease) return skip(r.reason!, key)
       lease = r.lease
     }
-    try { this.store.put(key, 'started') } catch { lease?.settle(); return skip('idempotency_capacity', key) }
+    try {
+      if (persistence) {
+        const approval = job.declared.cost ? this.options.budget.approval(m.moduleId, job.id) : undefined
+        persistence.admit({ key, moduleId: m.moduleId, jobId: job.id, eventId: trigger.eventId, stage, dependencies: trigger.evidence.map(({ id, version }) => ({ id, version })), grantHash: canonicalJsonHash(job.declared.grants), ...(job.declared.cost && approval ? { cost: { ...approval, caps: job.declared.cost.caps } } : {}) })
+      } else this.store.put(key, 'started')
+    } catch (error) { lease?.settle(); if (persistence) throw error; return skip('idempotency_capacity', key) }
     let completion: WorkerCompletion<JobResult>
     try {
-      const ticket = this.work.begin({ handlerId: `${m.moduleId}.${job.id}`, context: Object.freeze({ trigger, job, ...(lease ? { lease } : {}) }) }, { signal: parent })
+      if (persistence && this.options.workerPort) persistence.dispatch(key) // external port may start inside begin
+      const stateAttempt = persistence ? { key, operationId: `attempt:${key}`, fence: persistence.view().fence } : undefined
+      const ticket = this.work.begin({ handlerId: `${m.moduleId}.${job.id}`, context: Object.freeze({ trigger, job, ...(lease ? { lease } : {}) }), ...(stateAttempt ? { stateAttempt } : {}) }, { signal: parent })
       // Logical timeout must not release a budget reservation. Raw acknowledgement owns settlement.
-      void this.work.settled(ticket).then(() => lease?.settle(), () => { /* Unknown raw state: retain reservation. */ })
+      void this.work.settled(ticket).then(() => { lease?.settle(); persistence?.settle(key) }, () => { /* Unknown raw state: retain reservation. */ }).catch(() => { /* Stale/failed persistence remains closed, never frees recovered capacity. */ })
       const raw = await this.work.wait(ticket)
       try { completion = parseWorkerCompletion(raw) } catch { completion = { status: 'failed', certainty: 'uncertain', reason: 'malformed_worker_result' } }
     } catch { completion = { status: 'failed', certainty: 'uncertain', reason: 'worker_port_failed' } }
@@ -194,13 +217,16 @@ export class MonitoringModuleRuntime {
     if (job.riskTier === 'proposal' && result.status === 'executed') { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: 'tier_violation:proposal_executed', reported: false }) }
     if (job.riskTier === 'read-only' && (result.status === 'executed' || result.status === 'proposed')) { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: `tier_violation:read_only_${result.status}`, reported: false }) }
     if (result.status === 'executed' && !result.effectId) { this.store.put(key, 'uncertain'); return this.record({ ...base, key, status: 'uncertain', reason: 'missing_effect_receipt', reported: false }) }
-    this.store.put(key, result.status)
+    // Persist effect identity atomically with the terminal outcome, BEFORE any report callback.
+    if (persistence) persistence.finish({ ...base, key, status: result.status, reason: 'result_committed', ...(result.effectId ? { effectId: result.effectId } : {}), reported: false })
+    else this.store.put(key, result.status)
     let reported = false, reportReceipt: ReportEnqueueReceipt | undefined
     if (stage === 'shadow' && result.status !== 'rejected') return this.record({ ...base, key, status: result.status, reason: 'stage:shadow-report-withheld', reported: false, ...(result.report?.text ? { withheldReport: result.report.text } : {}) } as JobOutcome)
     if (result.status !== 'rejected' && (job.report === 'always' || (job.report === 'on-result' && result.report?.text))) {
       const text = result.report?.text ?? `${m.moduleId}.${job.id}: ${result.status}`
       const report = Object.freeze({ moduleId: m.moduleId, jobId: job.id, eventId: trigger.eventId, sessionId: trigger.sessionId, mode: job.report, text, riskTier: job.riskTier })
       const reportId = monitoringReportId(report)
+      persistence?.reportIntent(key, report) // unknown until receiver acknowledgement; never auto-replayed
       reportReceipt = { reportId, status: 'failed', reason: 'receiver_absent' }
       if (this.options.report) {
         try {
@@ -210,6 +236,7 @@ export class MonitoringModuleRuntime {
             : { reportId, status: 'unknown', reason: 'invalid_receiver_receipt' }
         } catch { reportReceipt = { reportId, status: 'unknown', reason: 'receiver_exception' } }
       }
+      persistence?.reportReceipt(key, reportReceipt)
       reported = reportReceipt.status === 'enqueued'
     }
     return this.record({ ...base, key, status: result.status, reason: reportReceipt && !reported ? `report_${reportReceipt.status}` : 'ok', ...(result.effectId ? { effectId: result.effectId } : {}), reported, ...(reportReceipt ? { reportReceipt: Object.freeze(reportReceipt) } : {}) })

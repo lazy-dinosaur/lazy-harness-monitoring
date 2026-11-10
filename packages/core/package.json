@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/sdk/index.ts",
     "./host": "./src/host/index.ts",
+    "./state-file": "./src/state/file-state-store.ts",
     "./engine/*": "./src/engine/*"
   }
 }

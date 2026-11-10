@@ -6,7 +6,7 @@ Omitting a module's run stage now selects `observe`, both in direct runtime regi
 
 ## Implemented fixes
 
-User-approved option A supersedes the three historical findings below. The original review and receipts remain historical evidence, not current behavior. P1 deltas 4, 5, 10 and 11 remain out of scope; R7 persistence is not implemented.
+User-approved option A supersedes the three historical findings below. The original review and receipts remain historical evidence, not current behavior. P1 deltas 4, 5, 10 and 11 remain out of scope. R7 now has an opt-in conservative v1 implementation below; earlier fix receipts remain historical.
 
 | Finding | Implementation commit | Correct-behavior tests and proof |
 |---|---|---|
@@ -251,9 +251,50 @@ Seeds intentionally have a repeated freshness permutation; four seeds are not ex
 
 None of these deltas, nor P1 deltas 4/5/10/11, were implemented. There is no approved implementation hidden in a helper or new fixture.
 
-## R7 restart durability — DESIGN ONLY, not an implemented API
+## R7 restart durability — implemented conservative v1
 
-### Current state and required ownership
+User-approved option A: module-owned optional state persistence, synthetic fixtures only, no model/provider calls or new dependencies. Connection-contract work remains on hold; no module manifest, attachment/module contract or host integration is included. **Additive, not BREAKING**; default runtime/mailbox behavior remains in-memory. The following implementation supersedes the historical design proposal retained below, not the real-host qualification gate.
+
+### Implemented API and ownership
+
+- Core root exports `StatePersistencePort` (synchronous `read` + atomic snapshot `commit`), schema-v1 `StateSnapshot`, `StateBinding`, `StateLimits`, `StateCommitReceipt`, `MonitoringStateSession`, `openMonitoringState`, `createMemoryStatePort`, `StatePortFactory` and `runStatePortConformance`. Snapshot validation and transition guards are shared by both reference backends. IO is synchronous and bounded; there is no pending-IO queue/lifecycle or pagination to recover.
+- Optional `/state-file` exports `createFileStatePort`; default core imports no filesystem store. Runtime `state` and mailbox `state` accept the SAME recovered session. One module/binding per session; `state` and the old runtime `idempotency` option are mutually exclusive. Existing key hashing is unchanged. Host supplies binding ID, declaration/config/model fingerprints and authoritative `InputPortScope`; config identity mismatch refuses recovery.
+- Work records preserve exact key, ordinal, module/job/event IDs, dependency versions, grant hash, stage ceiling, stable operation identity and dispatch fence, full cost reservation/approval metadata, terminal outcome/effect ID and report intent/enqueue receipt. No trigger text, closures, promises or signals are replayed. Uncertain entries are the non-evicting effect ledger, not a diagnostic ring. `state.view()` exposes recovered evidence; runtime `outcomes` remains an instance-local bounded diagnostic.
+- Mailbox records preserve carry/report IDs, pending consented text, dependency/turn/age data, all host generations, seen tombstones, delivery intent and explicit delivery receipt ID. `acknowledgeDelivery` is host-attested evidence, not independent provider observation. Read-record/review-sink ports are unchanged: review retention remains volatile.
+- `openMonitoringState` validates the entire snapshot and atomically commits recovery/new fence before admission. Old owners cannot commit or deliver through the mailbox; late local closures check the fence before invoking a handler. An external target must itself enforce the optional `WorkerJobRequest.stateAttempt` fence or reconcile its effect; the core cannot undo external work.
+
+### Implemented recovery / crash rules
+
+| Crash or recovery boundary | v1 policy |
+|---|---|
+| Before admission commit / unknown write ack | No dispatch without acknowledged commit. Any exception poisons that session; reopen reads the committed revision and reconciles, never assumes rollback or falls back to memory. |
+| Local queue admitted, not started | Keep key/cost tombstone, set rejected with `restart_unstarted_dropped`; no automatic re-admission or closure replay, even for read-only work. |
+| Dispatch intent committed / worker active / result not committed | Set uncertain (`restart_inflight_uncertain`), never replay. An external port's accepted-but-queued tickets are conservatively in this category because the port exposes no physical-start receipt. |
+| Old raw work unresolved | Retain unresolved capacity and full declared cost; block ALL fresh dispatch, not just duplicate keys. Old-owner settlement cannot release the recovered record. Authoritative out-of-band reconciliation is required; no automatic reconciliation API is implemented. |
+| Result committed, before report intent/enqueue | Terminal outcome and effect ID are atomic. Never rerun handler or automatically reenqueue reports; advice may be withheld/lost. |
+| Enqueue accepted / ack unknown | Persist report identity and enqueue state separately. No automatic enqueue replay, no inference of input delivery. |
+| Mailbox pending at restart | Restore only at matching binding/branch/compaction generations; otherwise drop body, retain seen identity. At `take`, revalidate session/branch/turn, dependency versions, age and carry policy. |
+| Before exposing carry text / external delivery before ack | Commit delivery-uncertain BEFORE returning text. Lost acknowledgement never causes reinjection. An explicit receipt may acknowledge it later; loss is accepted instead of exactly-once claims. |
+| New owner / changed config / corrupt or unknown schema | Fence old owner. Config/session/branch identity mismatch, malformed data, unknown versions, missing file or IO failure fail closed. No automatic migration. Host must resnapshot/rebind/reacquire grants, sources and approvals; persisted facts confer no authority. |
+| Capacity exhausted | Refuse; never TTL/LRU-evict keys, uncertain records, unresolved costs or mailbox tombstones. Diagnostics may still evict. |
+
+Costs are deliberately conservative: every admitted cost-bearing work item permanently charges its full per-run caps against current approved caps across fresh runtime/gate instances and reapprovals. Queued drops are not refunded. This is an upper bound, NOT reconstructed exact spend. Ordinary current budget approval remains required. There is no implicit new approval window, automatic cost refund, durable scope closure or tombstone compaction.
+
+### File backend, bounds and conformance
+
+The single-writer local-filesystem reference uses a SHA-256 partition name for binding/module/session/branch (no raw identifiers in paths), mode 0700 directory / 0600 file, checksummed `monitoring-state/v1` JSON, bounded read/write, a fixed `state.tmp`, file fsync, atomic rename and directory fsync. Successful commits acknowledge `fsync`; unsupported fsync or lost acknowledgements throw UNKNOWN rather than downgrade durability. Existing partitions without `state.json` are refused. A crash may leave one bounded temp file; it is never replay authority. The fake acknowledges `volatile` and simulates only committed-state survival across new port/runtime instances.
+
+Default per-partition maxima: 4096 work keys, 4096 mailbox identities, 4 MiB snapshot (plus bounded file envelope); limits may be tightened, never raised above schema ceilings. Protection cannot be deleted by a transition. Revision plus identical snapshot bytes is an idempotent commit retry; changed bytes or stale revision conflict. Host owns trusted root permissions, consented storage, partition count/lifecycle and backups. No cross-process locking/consensus, backup rollback protection, encryption or global root-size bound.
+
+`runStatePortConformance(makePort)` reopens backing by case ID and exercises new runtime duplicate suppression, local crash with queued work, old-owner/late-worker fencing, uncertain no-retry, separate enqueue/delivery receipts, stale generations, source/age checks, unknown/corrupt schema, revision conflicts/retries, no protection pruning, count/byte limits, cost-window conservation and before/after-commit acknowledgement faults. The same 39 checks run against memory backing and temporary file directories (direct package-context probe: memory 39, file 39, identical names/order; file backend absent from default exports). A deliberately forgetful backend must fail it. Additional tests exercise actual invalid file bytes/checksums/missing files, all three generation counters, external-worker ambiguity/attempt metadata, result/dispatch/report/delivery crash windows, public imports, effect receipts and runtime budget reapproval. No existing test is intentionally changed (24 new Bun tests; 39 internal conformance checks per backend). Local source verification: `bun run test` — 680 pass, 0 fail, 3710 assertions across 54 files; `bun run typecheck` — exit 0 across all eight configured workspaces. Verbatim local/fresh-worktree command receipts and frozen-install result are supplied in the pull request, not inferred from these counts.
+
+**Remaining UNVERIFIED:** real OS process kill, reboot/power loss/filesystem guarantees, multi-process concurrency and target fencing, real worker/provider receipts, durable host dedup, exact spend reconstruction, real delivery, tmux behavior, long-running soak/performance and arbitrary crash/fault combinations. The finite synthetic suite is not unconditional P6/P7 durable-readiness acceptance.
+
+### Historical pre-implementation design (not the current API)
+
+The remainder of this design subsection records the original proposal. Its asynchronous record/batch/lifecycle names were NOT implemented; the bounded synchronous snapshot API above is authoritative.
+
+### Pre-implementation state and required ownership (historical)
 
 `MemoryIdempotencyStore`, `ApprovedBudgetGate`, runtime queue entries/outcomes, coordinator ready state and `ContextCarryMailbox` items/seen/log are process memory today. `WorkerExecutionPort` can distinguish logical completion from physical settlement, but an in-memory promise, ticket or AbortSignal is not restart evidence. Recreating an engine/store loses protection; reconstructing only diagnostic history does not restore it.
 
@@ -335,9 +376,9 @@ Safe to drop: bounded diagnostic rings/traces, obsolete cached projections, unst
 
 ### Fake-backed conformance proposal
 
-Future `runPersistencePortConformance(makePort)` would accept a factory that reopens the same fake durable backing across fresh port instances (like the existing worker factory pattern, not its wire API). Simulated process death discards every engine object and uncommitted fake buffer; only committed backing survives. Crash each boundary above, also fail before/after commit ack, duplicate/changed commit IDs, competing owner fences, paginated reads, corruption/schema mismatch, capacity exhaustion, source/config tightening, receiver unknown and unresolved worker completion. Assert no new effect dispatch, report duplication or budget increase; count pending IO/reservations and verify no recovery reopens uncertain keys. Run a deliberately broken backend that forgets a protection key and require conformance failure. Then separately test a real storage backend across OS process termination; fake conformance is necessary, not proof of disk/fsync durability.
+The historical proposed `runPersistencePortConformance(makePort)` would accept a factory that reopens the same fake durable backing across fresh port instances (like the existing worker factory pattern, not its wire API). Simulated process death discards every engine object and uncommitted fake buffer; only committed backing survives. Crash each boundary above, also fail before/after commit ack, duplicate/changed commit IDs, competing owner fences, paginated reads, corruption/schema mismatch, capacity exhaustion, source/config tightening, receiver unknown and unresolved worker completion. Assert no new effect dispatch, report duplication or budget increase; count pending IO/reservations and verify no recovery reopens uncertain keys. Run a deliberately broken backend that forgets a protection key and require conformance failure. Then separately test a real storage backend across OS process termination; fake conformance is necessary, not proof of disk/fsync durability.
 
-**R7 remains UNVERIFIED and blocks P6 restart-safe operation and P7 durable-readiness claims** unless restart safety is explicitly excluded from the release contract. No port, fake backend, migration or recovery implementation was added in P2.
+**Historical gate:** no persistence implementation was added by the original P2 review. The conservative v1 above now supplies a port, fake, file backend and finite synthetic recovery tests, but real process/filesystem/host qualification remains UNVERIFIED and still blocks unconditional P6/P7 durable-readiness claims.
 
 ### What tmux covers (terminal multiplexer)
 
@@ -346,7 +387,7 @@ tmux can keep a child process/terminal alive after UI detach; it may help reconn
 ## Remaining UNVERIFIED / handoff
 
 - Real Pi SDK hooks, actual next provider-input receipt, real worker implementation/hard termination, host payload normalization, and pending Pi tests remain P3 or the D1' downstream implementation owner.
-- R7 implementation, durable backend/process-kill conformance, crash recovery, cross-process fencing, distributed exactly-once claims and terminal multiplexer behavior.
+- R7 real process-kill/power-loss qualification, multi-process writer exclusion/target fencing, authoritative receipt reconciliation, durable scope closure, distributed exactly-once claims and terminal multiplexer behavior. Opt-in v1 synthetic recovery is implemented above.
 - Arbitrary untyped frame/worker/source-store faults covered by the three findings; their fixes require approval. Full malformed-frame schema validation and all crash/fault combinations are not claimed.
 - Automatic freshness propagation after selection-to-runtime handoff, full stage-aware composition and origin attribution remain caller-owned pending approved composition work. No claim of a sandbox, runtime fairness or origin authentication.
 - Heap/RSS/GC leakage, indefinite soak, real host/worker contention, latency percentiles, hook overhead, cost/semantic quality, thresholds and all D2/P5 acceptance measurements.
