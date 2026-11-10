@@ -20,7 +20,7 @@ test('runtime dispatches through supplied worker port, not its legacy handler, a
     expect(request.context.trigger.eventId).toBe('e')
     return { status: 'prepared' }
   })
-  const modules = [{ moduleId: 'review.port', declaration: c.declaration, declarationHash: c.binding.declarationHash!, jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')! }]
+  const modules = [{ moduleId: 'review.port', declaration: c.declaration, declarationHash: c.binding.declarationHash!, jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')!, stage: 'active' as const }]
   const r = new MonitoringModuleRuntime({ modules, budget: new ApprovedBudgetGate(), workerPort: port,
     handlers: { 'review.port.prepare': { run() { legacyCalls++; throw new Error('legacy must not run') } } } })
   try {

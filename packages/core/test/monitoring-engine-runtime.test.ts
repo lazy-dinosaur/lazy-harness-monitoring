@@ -9,7 +9,7 @@ function setup(jobs: any[], handlers: Record<string, JobHandler>, overrides?: an
   const { declaration, hash } = validateMonitoringModuleDeclaration({ purpose: { question: q }, watch: { events: ['tool_call'], kinds: ['tool-call', 'policy'] }, jobs, ...extra }, grants)
   const eff = effectiveMonitoringJobs(declaration, overrides, '/m')!
   const budget = new ApprovedBudgetGate(), reports: Report[] = [], store = new MemoryIdempotencyStore()
-  const rt = new MonitoringModuleRuntime({ modules: [{ moduleId: 'rules.steer', declaration, declarationHash: hash, jobs: eff }], handlers, budget, idempotency: store, report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } } })
+  const rt = new MonitoringModuleRuntime({ modules: [{ moduleId: 'rules.steer', declaration, declarationHash: hash, jobs: eff, stage: 'active' }], handlers, budget, idempotency: store, report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } } })
   return { rt, budget, reports, store, declaration }
 }
 const trig = (over: Partial<Trigger> = {}): Trigger => ({ moduleId: 'rules.steer', eventId: 'e1', sessionId: 's1', evidence: [{ id: 'm1', kind: 'tool-call', version: 'v1', text: 'edit a.ts' }], ...over })

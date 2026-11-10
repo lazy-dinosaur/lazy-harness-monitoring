@@ -8,7 +8,7 @@ test('finite retention exercise evicts diagnostics but never reopens uncertain o
     watch: { events: ['input'], kinds: ['user-text'] }, jobs: [{ id: 'job', form: 'template', riskTier: 'read-only', idempotency: 'per-event', output: 'candidate',
       report: { supported: ['never'], default: 'never' }, grants: { actions: [], referenceKinds: [] } }] }, { actions: [], referenceKinds: [] })
   let calls = 0; const store = new MemoryIdempotencyStore(100)
-  const r = new MonitoringModuleRuntime({ modules: [{ moduleId: 'm', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')! }],
+  const r = new MonitoringModuleRuntime({ modules: [{ moduleId: 'm', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')!, stage: 'active' }],
     budget: new ApprovedBudgetGate(), idempotency: store, maxOutcomes: 8,
     handlers: { 'm.job': { run: () => { calls++; return { status: calls === 1 ? 'unknown' : 'prepared' } } } } })
   const fire = (eventId: string) => r.onTrigger({ moduleId: 'm', eventId, sessionId: 's', evidence: [] })

@@ -33,7 +33,7 @@ probe in issue #1 P7 thin-consumer work, out of repo. The port does not mirror F
 
 `MonitoringModuleRuntime` accepts optional `workerPort`; otherwise it uses the handler adapter.
 It owns that port's lifecycle: do not share a port between independently managed runtimes.
-For compatibility it starts running by default. `stop` rejects new work/cancels queued and active logical work;
+For compatibility its worker port starts running by default (this does not activate module jobs). `stop` rejects new work/cancels queued and active logical work;
 `start` after stop requires raw idle; `dispose` is permanent. Lifetime accounting does not reset on restart.
 Defaults: `maxActive: 4`, `maxQueued: 64`, `maxWork: 1024`, `jobTimeoutMs: 30000`.
 Timeout/cancel returns a terminal uncertain outcome and ignores late values, but **cannot hard-kill a promise**.
@@ -50,6 +50,11 @@ closed and reconciled, never as an LRU/TTL optimization. Restart durability rema
 its reservations remain until raw settlement. Reapproval cannot replace a live reservation.
 
 ## Trigger and report compatibility changes
+
+- **BREAKING — Default stage changed to observe:** an omitted module run stage now selects `observe`
+  in the runtime and SDK composition: no jobs, effects or reports. Consumers relying on implicit active
+  execution must pass `stage: 'active'` explicitly. Explicit `shadow`/`active` behavior and declaration
+  `maxStage` ceilings are unchanged; configuration cannot raise the stage above the declared ceiling.
 
 - Named points require plain own-data payloads with the hook's required fields. Input points require explicit
   `interactive`/`rpc` user source plus text. Missing source is not user authority. Raw predicates remain a

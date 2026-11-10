@@ -9,7 +9,7 @@ function runtime(handler: JobHandler, options: Partial<RuntimeOptions> = {}, cos
       ...(costly ? { cost: { models: [{ role: 'worker', profile: 'w' }], caps: { workerDispatches: 1 } } } : {}) }] }, { actions: [], referenceKinds: [] })
   const budget = new ApprovedBudgetGate(); if (costly) budget.approve({ moduleId: 'm', caps: { workerDispatches: 2 }, approvedBy: 'fixture' })
   const reports: unknown[] = []
-  const r = new MonitoringModuleRuntime({ modules: [{ moduleId: 'm', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')! }],
+  const r = new MonitoringModuleRuntime({ modules: [{ moduleId: 'm', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')!, stage: 'active' }],
     budget, handlers: { 'm.job': handler }, report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, ...options })
   const fire = (eventId: string, signal?: AbortSignal) => r.onTrigger({ moduleId: 'm', sessionId: 's', eventId, evidence: [] }, signal)
   return { r, fire, reports, budget }

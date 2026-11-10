@@ -21,14 +21,22 @@ describe('run stages (task154)', () => {
   const define = (extra: any = {}) => defineMonitoringModule({ version: '1', settingsSchema: Type.Object({}, { additionalProperties: false }), grants, destination: 'sink', declaration: { purpose: { question: q }, watch: { events: ['input'], kinds: ['user-text'] }, jobs: [job()], ...extra }, create: () => ({ id: 'stage.mod', eventKinds: ['user.input'], referenceKinds: ['user-text'], allowedActions: ['monitoring.selected-material'], run: () => [] }) })
   const prepare = (b: any, stage?: string) => prepareMonitoringBindings(parseMonitoringConfiguration({ contractVersion: 1, source: { kind: 'host-events', scope: 'host-supplied-events' }, goal: 'g', receiver: 'r', modules: [{ id: 'stage.mod', version: '1', ...(stage ? { stage } : {}) }] }), { modules: { 'stage.mod': b }, allowedSourceScopes: ['host-supplied-events'], maxModules: 4, capabilities: { hostId: 'fixture', version: '1', events: ['input', 'turn_end', 'tool_call'], actions: ['inject-context'], snapshot: 'none' }, internalActions: ['rule.notice', 'rule.block'] })
   test('configuration may only lower the declared highest stage', () => {
-    expect((prepare(define()).processors[0] as any).stage).toBe('active')
-    expect((prepare(define({ maxStage: 'shadow' })).processors[0] as any).stage).toBe('shadow')
+    for (const maxStage of [undefined, 'observe', 'shadow', 'active'] as const) {
+      expect((prepare(define({ maxStage })).processors[0] as any).stage).toBe('observe')
+    }
+    expect((prepare(define(), 'active').processors[0] as any).stage).toBe('active')
+    expect((prepare(define({ maxStage: 'shadow' }), 'shadow').processors[0] as any).stage).toBe('shadow')
+    expect((prepare(define({ maxStage: 'observe' }), 'observe').processors[0] as any).stage).toBe('observe')
+    expect((prepare(define({ maxStage: 'observe' }), 'off').processors[0] as any).stage).toBe('off')
+    for (const stage of ['shadow', 'active']) {
+      expect(code(() => prepare(define({ maxStage: 'observe' }), stage))).toBe('STAGE_RAISED')
+    }
     expect((prepare(define({ maxStage: 'shadow' }), 'observe').processors[0] as any).stage).toBe('observe')
     expect(code(() => prepare(define({ maxStage: 'shadow' }), 'active'))).toBe('STAGE_RAISED')
   })
-  const runtime = (stage: any, jobs: any[], handlers: Record<string, JobHandler>, rows: any[], reports: Report[]) => {
-    const { declaration, hash } = validateMonitoringModuleDeclaration({ purpose: { question: q }, watch: { events: ['input'], kinds: ['user-text'] }, jobs }, grants)
-    return new MonitoringModuleRuntime({ modules: [{ moduleId: 'stage.mod', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/m')!, stage }], handlers, budget: new ApprovedBudgetGate(), idempotency: new MemoryIdempotencyStore(), report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, trace: r => rows.push(r) })
+  const runtime = (stage: any, jobs: any[], handlers: Record<string, JobHandler>, rows: any[], reports: Report[], extra: any = {}) => {
+    const { declaration, hash } = validateMonitoringModuleDeclaration({ purpose: { question: q }, watch: { events: ['input'], kinds: ['user-text'] }, jobs, ...extra }, grants)
+    return new MonitoringModuleRuntime({ modules: [{ moduleId: 'stage.mod', declaration, declarationHash: hash, jobs: effectiveMonitoringJobs(declaration, undefined, '/m')!, ...(stage === undefined ? {} : { stage }) }], handlers, budget: new ApprovedBudgetGate(), idempotency: new MemoryIdempotencyStore(), report: r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, trace: r => rows.push(r) })
   }
   const trig: Trigger = { moduleId: 'stage.mod', eventId: 'e1', sessionId: 's1', evidence: [{ id: 'm1', kind: 'user-text', version: 'v1', text: 'x' }] }
   test('observe never runs jobs; shadow runs read-only jobs and withholds reports; active reports', async () => {
@@ -39,6 +47,28 @@ describe('run stages (task154)', () => {
       expect(calls).toBe(expectCalls); expect(reports).toHaveLength(expectReports); expect(o[0]!.reason).toBe(reason)
       expect(rows).toEqual([expect.objectContaining({ type: 'job', moduleId: 'stage.mod', stage, reason })])
       if (stage === 'shadow') expect((o[0] as any).withheldReport).toBe('reminder')
+    }
+  })
+  test('omitted stage observes without jobs, effects or reports; explicit active still executes effects', async () => {
+    const jobs = [job(), job({ id: 'effect', riskTier: 'automatic', grants: { actions: ['rule.notice'], referenceKinds: [] } })]
+    for (const stage of [undefined, 'active'] as const) {
+      let calls = 0, effects = 0
+      const rows: any[] = [], reports: Report[] = []
+      const rt = runtime(stage, jobs, {
+        'stage.mod.deliver': { run: () => { calls++; return { status: 'prepared', report: { text: 'reminder' } } } },
+        'stage.mod.effect': { run: () => { effects++; return { status: 'executed', effectId: 'fixture-effect' } } },
+      }, rows, reports, { acceptance: { setRef: 'fixture-acceptance.json' } })
+      try {
+        const outcomes = await rt.onTrigger(trig)
+        expect(calls).toBe(stage === undefined ? 0 : 1)
+        expect(effects).toBe(stage === undefined ? 0 : 1)
+        expect(reports).toHaveLength(stage === undefined ? 0 : 2)
+        expect(outcomes.map(o => o.status)).toEqual(stage === undefined ? ['skipped', 'skipped'] : ['prepared', 'executed'])
+        expect(outcomes.map(o => o.reason)).toEqual(stage === undefined ? ['stage:observe', 'stage:observe'] : ['ok', 'ok'])
+        expect(outcomes.map(o => o.reported)).toEqual(stage === undefined ? [false, false] : [true, true])
+        expect(rows).toEqual(outcomes.map(o => ({ type: 'job', ...o, stage: stage ?? 'observe' })))
+        expect(rt.getStatus().completions).toBe(stage === undefined ? 0 : 2)
+      } finally { rt.dispose(); await rt.idle() }
     }
   })
   test('shadow skips jobs that could cause effects', async () => {

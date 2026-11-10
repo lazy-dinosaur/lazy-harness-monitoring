@@ -57,7 +57,7 @@ export type ReportEnqueueReceipt = Readonly<{ reportId: string; status: 'enqueue
 export type ReportDeliveryReceipt = Readonly<{ reportId: string; status: 'delivered'; kind: 'hook-boundary'; boundary: 'context_with_system' }>
 export function monitoringReportId(report: Report): string { return canonicalJsonHash(report) }
 export type JobOutcome = Readonly<{ moduleId: string; jobId: string; eventId: string; key?: string; status: 'executed' | 'proposed' | 'prepared' | 'rejected' | 'uncertain' | 'skipped'; reason: string; effectId?: string; reported: boolean; reportReceipt?: ReportEnqueueReceipt }>
-export type RegisteredModule = Readonly<{ moduleId: string; declaration: MonitoringModuleDeclaration; declarationHash: string; jobs: readonly MonitoringEffectiveJob[]; /** task154 run stage (default active). */ stage?: 'off' | 'observe' | 'shadow' | 'active' }>
+export type RegisteredModule = Readonly<{ moduleId: string; declaration: MonitoringModuleDeclaration; declarationHash: string; jobs: readonly MonitoringEffectiveJob[]; /** task154 run stage (default observe; active requires explicit opt-in). */ stage?: 'off' | 'observe' | 'shadow' | 'active' }>
 
 /** Explicit user-approved budget windows; never created implicitly. Reservation = the job's declared per-run caps. */
 export class ApprovedBudgetGate {
@@ -141,7 +141,7 @@ export class MonitoringModuleRuntime {
   dispose() { this.work.dispose() }
   idle() { return this.work.idle() }
   getStatus() { return Object.freeze({ ...this.work.getStatus(), outcomesRetained: this.outcomeLog.length, outcomesEvicted: this.outcomesEvicted }) }
-  private record(o: JobOutcome) { this.outcomeLog.push(Object.freeze(o)); if (this.outcomeLog.length > (this.options.maxOutcomes ?? 256)) { this.outcomeLog.shift(); this.outcomesEvicted++ }; try { this.options.trace?.({ type: 'job', ...o, stage: this.modules.get(o.moduleId)?.stage ?? 'active' }) } catch { /* tracing never changes outcomes */ } return o }
+  private record(o: JobOutcome) { this.outcomeLog.push(Object.freeze(o)); if (this.outcomeLog.length > (this.options.maxOutcomes ?? 256)) { this.outcomeLog.shift(); this.outcomesEvicted++ }; try { this.options.trace?.({ type: 'job', ...o, stage: this.modules.get(o.moduleId)?.stage ?? 'observe' }) } catch { /* tracing never changes outcomes */ } return o }
   async onTrigger(trigger: Trigger, signal: AbortSignal = new AbortController().signal): Promise<readonly JobOutcome[]> {
     const state = this.work.getStatus().state
     if (state !== 'running') return [this.record({ moduleId: trigger.moduleId, jobId: '*', eventId: trigger.eventId, status: 'skipped', reason: `runtime_${state}`, reported: false })]
@@ -154,7 +154,7 @@ export class MonitoringModuleRuntime {
   private async runJob(m: RegisteredModule, job: MonitoringEffectiveJob, trigger: Trigger, parent: AbortSignal): Promise<JobOutcome> {
     const base = { moduleId: m.moduleId, jobId: job.id, eventId: trigger.eventId }
     // task154 run stage: off/observe never run jobs; shadow runs only read-only jobs and withholds their reports.
-    const stage = m.stage ?? 'active'
+    const stage = m.stage ?? 'observe'
     if (stage === 'off' || stage === 'observe') return this.record({ ...base, status: 'skipped', reason: `stage:${stage}`, reported: false })
     if (stage === 'shadow' && job.riskTier !== 'read-only') return this.record({ ...base, status: 'skipped', reason: 'stage:shadow-effects-withheld', reported: false })
     const skip = (reason: string, key?: string) => this.record({ ...base, ...(key ? { key } : {}), status: 'skipped', reason, reported: false })

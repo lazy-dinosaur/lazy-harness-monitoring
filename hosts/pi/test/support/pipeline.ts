@@ -43,7 +43,7 @@ export async function pipelineFixture(options: {
     return options.worker?.(request, signal) ?? { status: 'prepared', report: { text: 'P3_PIPELINE_REPORT' } }
   })
   const runtime = new MonitoringModuleRuntime({ modules: [{ moduleId: 'p3', declaration: binding.declaration!,
-    declarationHash: binding.declarationHash!, jobs: effectiveMonitoringJobs(binding.declaration!, undefined, '/jobs')! }],
+    declarationHash: binding.declarationHash!, jobs: effectiveMonitoringJobs(binding.declaration!, undefined, '/jobs')!, stage: 'active' }],
     budget: new ApprovedBudgetGate(), handlers: {}, workerPort: port,
     report: report => {
       reports.push(report)

@@ -104,11 +104,11 @@ export function effectiveMonitoringWatch(declaration: MonitoringModuleDeclaratio
 /** task154 run stages: off < observe (judge + trace) < shadow (job runs, effects/reports withheld) < active. */
 export type MonitoringRunStage = 'off' | 'observe' | 'shadow' | 'active'
 const STAGE_ORDER: readonly MonitoringRunStage[] = ['off', 'observe', 'shadow', 'active']
-/** Data may only lower the declared highest stage. */
+/** Omitted run stage defaults to observe; explicit selection may only lower the declared highest stage. */
 export function effectiveMonitoringStage(declaration: MonitoringModuleDeclaration | undefined, selected: MonitoringRunStage | undefined, path: string): MonitoringRunStage | undefined {
   if (!declaration) { if (selected !== undefined) configurationFailure('STAGE_RAISED', path, 'A run stage requires a module declaration'); return undefined }
   const max: MonitoringRunStage = declaration.maxStage ?? 'active'
-  if (selected === undefined) return max
+  if (selected === undefined) return 'observe'
   if (STAGE_ORDER.indexOf(selected) > STAGE_ORDER.indexOf(max)) configurationFailure('STAGE_RAISED', path, 'Configuration may only lower the declared run stage')
   return selected
 }
