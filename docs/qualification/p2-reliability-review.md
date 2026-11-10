@@ -1,5 +1,9 @@
 # P2 — core mechanical reliability and failure isolation (issue #1)
 
+## Default stage changed to observe — BREAKING
+
+Omitting a module's run stage now selects `observe`, both in direct runtime registration and SDK configuration composition. Jobs, effects and reports do not run; diagnostic job traces identify `observe`. Consumers relying on the implicit active default must now pass `stage: 'active'` explicitly. Explicit `shadow`/`active` semantics and declaration-level `maxStage` ceilings (including the default active ceiling) are unchanged; configuration still cannot exceed the declared ceiling.
+
 ## Implemented fixes
 
 User-approved option A supersedes the three historical findings below. The original review and receipts remain historical evidence, not current behavior. P1 deltas 4, 5, 10 and 11 remain out of scope; R7 persistence is not implemented.

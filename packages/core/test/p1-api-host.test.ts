@@ -116,7 +116,7 @@ describe('P1 public API and second-host review', () => {
   test('absent/throwing receiver records failed/unknown receipt without rerunning prepared jobs', async () => {
     const c = createScenario({ id: 'review.receipt', events: ['user.prompt'], kinds: ['user-text'] })
     const options = { modules: [{ moduleId: 'review.receipt', declaration: c.declaration,
-      declarationHash: c.binding.declarationHash!, jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')! }],
+      declarationHash: c.binding.declarationHash!, jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')!, stage: 'active' as const }],
       budget: new ApprovedBudgetGate(), handlers: { 'review.receipt.prepare': { run: () => ({ status: 'prepared' as const, report: { text: 'advice' } }) } } }
     const trigger = { moduleId: 'review.receipt', eventId: 'e1', sessionId: 'synthetic-session', evidence: [] }
     try {
@@ -147,7 +147,7 @@ describe('P1 public API and second-host review', () => {
     const raw = new Promise<void>(resolve => { release = resolve })
     const runtime = new MonitoringModuleRuntime({ jobTimeoutMs: 5,
       modules: [{ moduleId: 'review.timeout', declaration: c.declaration, declarationHash: c.binding.declarationHash!,
-        jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')! }], budget: new ApprovedBudgetGate(),
+        jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')!, stage: 'active' }], budget: new ApprovedBudgetGate(),
       handlers: { 'review.timeout.prepare': { async run({ signal }) {
         aborted = new Promise(resolve => signal.addEventListener('abort', () => resolve(), { once: true }))
         await raw; return { status: 'prepared' }

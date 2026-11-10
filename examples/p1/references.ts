@@ -2,7 +2,7 @@ import { createScenario, type Script } from './support.ts'
 
 // Catalog admission and exact reference selection are separate from event admission.
 export function referenceAssistance(script: Script = {}) {
-  return createScenario({ id: 'review.references', events: ['user.prompt', 'user.steer', 'user.follow-up'],
+  return createScenario({ id: 'review.references', stage: 'active', events: ['user.prompt', 'user.steer', 'user.follow-up'],
     kinds: ['user-text', 'reference-doc'], script: { select: id => id !== 'doc.unrelated', ...script },
     references: [
       { id: 'doc.api', kind: 'reference-doc', version: 'r1', content: 'Exact API reference: use the public entrypoint.' },

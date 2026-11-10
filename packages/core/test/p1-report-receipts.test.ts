@@ -19,7 +19,7 @@ test('only matching explicit enqueue acceptance reports success; failures never 
     for (const [report, status] of sinks) {
       let calls = 0
       const r = new MonitoringModuleRuntime({ modules: [{ moduleId: 'review.receipts', declaration: c.declaration,
-        declarationHash: c.binding.declarationHash!, jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')! }],
+        declarationHash: c.binding.declarationHash!, jobs: effectiveMonitoringJobs(c.declaration, undefined, '/jobs')!, stage: 'active' }],
         budget: new ApprovedBudgetGate(), report, handlers: { 'review.receipts.prepare': { run() { calls++; return { status: 'prepared', report: { text: 'advice' } } } } } })
       const trigger = { moduleId: 'review.receipts', eventId: 'e', sessionId: 'synthetic-session', evidence: [] }
       const o = (await r.onTrigger(trigger))[0]!

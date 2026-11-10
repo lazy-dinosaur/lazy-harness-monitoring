@@ -5,7 +5,7 @@ import { createScenario, type Script } from './support.ts'
 export function repeatedTestFailure(script: Script = {}) {
   const commands = new Map<string, string>(), seen = new Set<string>()
   let last = '', count = 0, generation = 0, incident = '', admitted = false
-  const consumer = createScenario({ id: 'review.test-loop', events: ['tool.failed'],
+  const consumer = createScenario({ id: 'review.test-loop', stage: 'active', events: ['tool.failed'],
     kinds: ['tool-arguments', 'tool-meta', 'tool-result', 'event-meta'], script,
     trigger: frame => frame.sourceEvent === 'tool_execution_end' && admitted,
     incidentKey: () => incident,
