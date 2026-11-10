@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { canonicalJsonHash, prepareMonitoringBindings, type MonitoringConfiguration } from '@lazy-harness/monitoring-core'
 import { watchModuleFromDeclaration, type Report, type RuntimeOptions } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
-import { createReferencesHandlers, referencesBinding, referencesDeclaration, referencesHandlers, referencesQuestion, referencesQuestionNarrow, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
+import { createReferencesRegistration, createReferencesHandlers, referencesBinding, referencesDeclaration, referencesHandlers, referencesQuestion, referencesQuestionNarrow, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
 import { evidence, jobs, runtime, trigger } from './support.ts'
 
 describe('references binding and gap-filler purpose', () => {
@@ -36,9 +36,62 @@ describe('references binding and gap-filler purpose', () => {
   })
 })
 
+describe('official references runtime registration', () => {
+  test('default registration is observe: no jobs, effects or reports', async () => {
+    const registration = createReferencesRegistration()
+    expect(registration.stage).toBe('observe')
+    expect(registration.moduleId).toBe(REFERENCES_MODULE_ID)
+    expect(registration.declaration).toBe(referencesDeclaration)
+    expect(registration.declarationHash).toBe(referencesBinding.declarationHash!)
+    expect(registration.jobs).toEqual(jobs)
+    expect(Object.isFrozen(registration)).toBe(true)
+    let calls = 0
+    const reports: Report[] = []
+    const rt = runtime(undefined, r => { reports.push(r); return { reportId: canonicalJsonHash(r), status: 'enqueued' } }, {
+      'context.references.deliver': { run(context) { calls++; return referencesHandlers['context.references.deliver'].run(context) } },
+    })
+    try {
+      const outcomes = await rt.onTrigger(trigger)
+      expect(outcomes).toEqual([{ moduleId: REFERENCES_MODULE_ID, jobId: 'deliver', eventId: trigger.eventId, status: 'skipped', reason: 'stage:observe', reported: false }])
+      expect(calls).toBe(0)
+      expect(outcomes.every(o => o.effectId === undefined)).toBe(true)
+      expect(reports).toEqual([])
+    } finally { await rt.idle(); rt.dispose() }
+  })
+  test('explicit active registration delivers the real template and matching report receipt', async () => {
+    const registration = createReferencesRegistration({ stage: 'active' })
+    expect(registration.stage).toBe('active')
+    expect(registration.declarationHash).toBe(referencesBinding.declarationHash!)
+    const reports: Report[] = []
+    const rt = runtime({ stage: 'active' }, r => { reports.push(r); return { reportId: canonicalJsonHash(r), status: 'enqueued' } })
+    try {
+      const [outcome] = await rt.onTrigger({ ...trigger, evidence: [evidence[0]] })
+      expect(outcome.status).toBe('prepared')
+      expect(outcome.reported).toBe(true)
+      expect(reports).toHaveLength(1)
+      expect(reports[0].text).toBe('[근거 자료]\n- doc:lantern (v3): Lanterns use blue glass.\nKeep the lid closed.')
+      expect(outcome.reportReceipt).toEqual({ reportId: canonicalJsonHash(reports[0]), status: 'enqueued' })
+    } finally { await rt.idle(); rt.dispose() }
+  })
+  test('registration rejects stages above a tightened declaration ceiling and unknown stages', () => {
+    for (const maxStage of ['observe', 'shadow'] as const) {
+      const registration = createReferencesRegistration({ maxStage })
+      expect(registration.stage).toBe('observe')
+      expect(registration.declaration.maxStage).toBe(maxStage)
+      expect(registration.declarationHash).toBe(canonicalJsonHash(registration.declaration))
+      expect(registration.declarationHash).not.toBe(referencesBinding.declarationHash!)
+      expect(() => createReferencesRegistration({ maxStage, stage: 'active' })).toThrow('Configuration may only lower the declared run stage')
+    }
+    expect(() => createReferencesRegistration({ maxStage: 'observe', stage: 'shadow' })).toThrow('Configuration may only lower the declared run stage')
+    for (const stage of ['off', 'observe', 'shadow', 'active'] as const) expect(createReferencesRegistration({ stage }).stage).toBe(stage)
+    expect(() => createReferencesRegistration({ stage: 'above-active' as 'active' })).toThrow('Unknown references run stage')
+    expect(() => createReferencesRegistration({ maxStage: 'above-active' as 'active' })).toThrow('Unknown references declaration ceiling')
+    expect(createReferencesRegistration().declaration).toBe(referencesDeclaration)
+  })
+})
 describe('deterministic delivery through handler worker port', () => {
   test('quotes only selected knowledge verbatim with id/version; empty selection rejects', async () => {
-    const reports: Report[] = [], rt = runtime(r => { reports.push(r); return { reportId: canonicalJsonHash(r), status: 'enqueued' } })
+    const reports: Report[] = [], rt = runtime({ stage: 'active' }, r => { reports.push(r); return { reportId: canonicalJsonHash(r), status: 'enqueued' } })
     try {
       const selected = { ...trigger, evidence: [{ id: 'current', kind: 'user-text', version: '1', text: 'Lantern question' }, evidence[0]] }
       expect((await rt.onTrigger(selected))[0].status).toBe('prepared')
@@ -71,7 +124,7 @@ describe('deterministic delivery through handler worker port', () => {
       [r => ({ reportId: canonicalJsonHash(r), status: 'enqueued' }), 'enqueued'],
     ]
     for (const [sink, status] of sinks) {
-      const rt = runtime(sink)
+      const rt = runtime({ stage: 'active' }, sink)
       try {
         const out = (await rt.onTrigger(trigger))[0]
         expect(out.reportReceipt?.status).toBe(status)

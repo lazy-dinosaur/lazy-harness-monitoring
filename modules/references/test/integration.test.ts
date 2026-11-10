@@ -9,7 +9,7 @@ const triggerFor = (p: RealtimeSelectionPacket) => ({ moduleId: p.moduleId, even
 
 test('scripted selection bridges the current request to exact documents and separate hook receipts', async () => {
   const p = pipeline(), enqueued: Report[] = [], receipts: ReportDeliveryReceipt[] = []
-  const rt = runtime(r => { enqueued.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } })
+  const rt = runtime({ stage: 'active' }, r => { enqueued.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } })
   try {
     p.accept(frame(2)); await p.idle()
     expect(p.requests).toHaveLength(1)
@@ -35,7 +35,7 @@ for (const mode of ['skip', 'defer'] as const) test(`scripted ${mode} makes no h
 })
 
 test('empty document selection never causes fallback to the catalog', async () => {
-  const p = pipeline({ select: false }), reports: Report[] = [], rt = runtime(r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } })
+  const p = pipeline({ select: false }), reports: Report[] = [], rt = runtime({ stage: 'active' }, r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } })
   try {
     p.accept(frame(2)); await p.idle()
     const offers = p.coordinator.takeReady('module')
@@ -57,7 +57,7 @@ for (const change of ['document-version', 'new-request'] as const) test(`${chang
   try {
     p.accept(frame(2)); await p.idle()
     const [offer] = p.coordinator.takeReady('module'), [packet] = packets(offer)
-    const rt = runtime(r => {
+    const rt = runtime({ stage: 'active' }, r => {
       if (!offer.isCurrent()) return { reportId: monitoringReportId(r), status: 'failed', reason: 'stale_source' }
       reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' }
     }, { 'context.references.deliver': { async run(context) { started(); await gate; return referencesHandlers['context.references.deliver'].run(context) } } })
@@ -76,7 +76,7 @@ for (const change of ['document-version', 'new-request'] as const) test(`${chang
 
 test('host compaction callback clears read state before the next references delivery', async () => {
   const p = pipeline(), read = new Set(['doc:lantern']), reports: Report[] = []
-  const rt = runtime(r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, createReferencesHandlers(() => new Set(read)))
+  const rt = runtime({ stage: 'active' }, r => { reports.push(r); return { reportId: monitoringReportId(r), status: 'enqueued' } }, createReferencesHandlers(() => new Set(read)))
   // Host-owned reducer. The module does not listen to hooks or infer reads from reports.
   const accept = (f: ReturnType<typeof frame>) => { if (f.sourceEvent === 'session_compact') read.clear(); p.accept(f) }
   try {
