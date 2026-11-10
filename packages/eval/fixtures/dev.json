@@ -1,0 +1,391 @@
+{
+  "synthetic": true,
+  "id": "synthetic-p0-dev",
+  "version": "1",
+  "split": "dev",
+  "frames": [
+    {
+      "id": "dev-start",
+      "cursor": 1,
+      "sourceEvent": "session_start",
+      "kind": "session_start",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "reason": "synthetic-fixture"
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-1",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-reference-need",
+      "cursor": 2,
+      "sourceEvent": "input",
+      "kind": "input",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "text": "Synthetic dev request: show the inspect API reference."
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-2",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-reference-none",
+      "cursor": 3,
+      "sourceEvent": "input",
+      "kind": "input",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "text": "Synthetic dev greeting; no reference requested."
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-3",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-rule-conflict",
+      "cursor": 4,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "message": {
+          "role": "assistant",
+          "content": "Synthetic dev plan: change the example file without inspecting."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-4",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-rule-compliant",
+      "cursor": 5,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "message": {
+          "role": "assistant",
+          "content": "Synthetic dev plan: inspect before changing the example file."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-5",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-memory-durable",
+      "cursor": 6,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "message": {
+          "role": "user",
+          "content": "Synthetic dev decision: the example project uses inspect-only review."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-6",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-memory-transient",
+      "cursor": 7,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "message": {
+          "role": "user",
+          "content": "Synthetic dev temporary status: this test is running."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-7",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-loop-first",
+      "cursor": 8,
+      "sourceEvent": "tool_result",
+      "kind": "tool_result",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "toolCallId": "synthetic-test-1",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic dev test command failed, revision example-1."
+          }
+        ],
+        "isError": true
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-8",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-loop-second",
+      "cursor": 9,
+      "sourceEvent": "tool_result",
+      "kind": "tool_result",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "toolCallId": "synthetic-test-2",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic dev same test failed, revision example-1."
+          }
+        ],
+        "isError": true
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-9",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "dev-loop-third",
+      "cursor": 10,
+      "sourceEvent": "tool_result",
+      "kind": "tool_result",
+      "sessionId": "synthetic-dev",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "toolCallId": "synthetic-test-3",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic dev third distinct test failure, revision example-1."
+          }
+        ],
+        "isError": true
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-dev",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-dev",
+        "revision": "snapshot-10",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-reference-need",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-reference-none",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-rule-conflict",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-rule-compliant",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-memory-durable",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-memory-transient",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-first",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-second",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-third",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    }
+  ]
+}

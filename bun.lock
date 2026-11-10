@@ -52,6 +52,9 @@
     "packages/eval": {
       "name": "@lazy-harness/monitoring-eval",
       "version": "0.0.0",
+      "dependencies": {
+        "@lazy-harness/monitoring-core": "workspace:*",
+      },
     },
   },
   "packages": {

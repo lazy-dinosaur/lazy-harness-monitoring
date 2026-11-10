@@ -1,0 +1,391 @@
+{
+  "synthetic": true,
+  "id": "synthetic-p0-holdout",
+  "version": "1",
+  "split": "holdout",
+  "frames": [
+    {
+      "id": "holdout-start",
+      "cursor": 1,
+      "sourceEvent": "session_start",
+      "kind": "session_start",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "reason": "synthetic-fixture"
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-1",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-reference-need",
+      "cursor": 2,
+      "sourceEvent": "input",
+      "kind": "input",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "text": "Synthetic holdout request: show the inspect API reference."
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-2",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-reference-none",
+      "cursor": 3,
+      "sourceEvent": "input",
+      "kind": "input",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "text": "Synthetic holdout greeting; no reference requested."
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-3",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-rule-conflict",
+      "cursor": 4,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "message": {
+          "role": "assistant",
+          "content": "Synthetic holdout plan: change the example file without inspecting."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-4",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-rule-compliant",
+      "cursor": 5,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "message": {
+          "role": "assistant",
+          "content": "Synthetic holdout plan: inspect before changing the example file."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-5",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-memory-durable",
+      "cursor": 6,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "message": {
+          "role": "user",
+          "content": "Synthetic holdout decision: the example project uses inspect-only review."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-6",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-memory-transient",
+      "cursor": 7,
+      "sourceEvent": "message_end",
+      "kind": "message_end",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "source": "interactive",
+        "message": {
+          "role": "user",
+          "content": "Synthetic holdout temporary status: this test is running."
+        }
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-7",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-loop-first",
+      "cursor": 8,
+      "sourceEvent": "tool_result",
+      "kind": "tool_result",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "toolCallId": "synthetic-test-1",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic holdout test command failed, revision example-1."
+          }
+        ],
+        "isError": true
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-8",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-loop-second",
+      "cursor": 9,
+      "sourceEvent": "tool_result",
+      "kind": "tool_result",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "toolCallId": "synthetic-test-2",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic holdout same test failed, revision example-1."
+          }
+        ],
+        "isError": true
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-9",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    },
+    {
+      "id": "holdout-loop-third",
+      "cursor": 10,
+      "sourceEvent": "tool_result",
+      "kind": "tool_result",
+      "sessionId": "synthetic-holdout",
+      "binding": 1,
+      "epoch": 1,
+      "payload": {
+        "toolCallId": "synthetic-test-3",
+        "toolName": "bash",
+        "content": [
+          {
+            "type": "text",
+            "text": "Synthetic holdout third distinct test failure, revision example-1."
+          }
+        ],
+        "isError": true
+      },
+      "available": true,
+      "snapshot": {
+        "sessionId": "synthetic-holdout",
+        "leafId": null,
+        "branch": [],
+        "canonicalMessages": [],
+        "effectiveSystemPrompt": null,
+        "stage": "canonical_projection",
+        "canonicalHash": "synthetic-holdout",
+        "revision": "snapshot-10",
+        "available": true,
+        "fullProviderContext": false,
+        "omitted": []
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-reference-need",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-reference-none",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-rule-conflict",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-rule-compliant",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-memory-durable",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-memory-transient",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-first",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-second",
+      "mode": "skip",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-third",
+      "mode": "run",
+      "select": true,
+      "worker": "prepared",
+      "delivery": "delivered",
+      "cancel": false
+    }
+  ]
+}
