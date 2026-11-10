@@ -1,33 +1,67 @@
-# Monitoring implementation notes for the lazy-harness module composition contract
+# Canonical lazy-harness-monitoring connection contract
 
-This document explains how lazy-harness-monitoring implements the common connection
-contract; it does **not** define that common contract. Its canonical meaning is the
-lazy-harness SDD [module-composition.md](https://github.com/lazy-dinosaur/lazy-harness/blob/main/.lazy-harness/spec/platform/module-composition.md),
-including the scope decision in **§6.6** (user-confirmed 2026-11-09). That SDD revision
-may not be on `origin/main` yet; a temporarily unavailable link does not transfer authority
-to this document. Monitoring-internal Host Adapter and worker details, and the
-[purpose-module contract](module-contract.md) for this repository's `modules/*`, remain
-canonical here. See the [offline composition](../../examples/composition/README.md);
-this is not a deployed extension or a claim of complete common-contract conformance.
+This document is **the canonical connection contract for lazy-harness-monitoring**. It
+follows the short common rules in lazy-harness SDD
+[module-composition.md §6.6](https://github.com/lazy-dinosaur/lazy-harness/blob/main/.lazy-harness/spec/platform/module-composition.md)
+(user-confirmed 2026-11-09). That SDD revision may not be on `main` yet. Each module
+repository defines and exports its **own** connection contract: port types, fakes and
+conformance tests. The separate contract repository is cancelled; this contract is not
+deferred to another repository. The SDD holds only the common rules, not monitoring's
+port definitions or conformance suites.
 
-## Mapping to the canonical SDD and remaining gaps
+lazy-harness installs this module repository as an exact-pinned git submodule, imports
+its public contract and implements the ports with Fabric in
+`lazy-harness/packages/lazy-harness-pi`. Fabric never belongs in module repositories
+(D1′). Non-TypeScript modules ship an RPC server plus a TypeScript client; monitoring
+is a TypeScript in-process module. The [purpose-module contract](module-contract.md)
+separately governs monitoring-internal `modules/*`. The
+[offline composition](../../examples/composition/README.md) is a reference, not a deployed
+extension, live-use approval or a claim that every common-rule gap is closed.
 
-| SDD concern | Monitoring implementation / status |
+## Common-rule checklist (SDD §6.6)
+
+| Common rule | Monitoring status / evidence |
 |---|---|
-| Composition-owned assembly (§1–3) | `prepareMonitoringBindings` checks needs, settings, jobs/grants, exact binding versions and capabilities before any factory. Judge/verifier/input ports are injected; missing/failed verification rejects rather than becoming a negative semantic answer. Monitoring-specific preflight details are below. |
-| Agent host code (§2) | `hosts/pi` implements frames, capability declarations, lifecycle generations, report delivery and generic read attestation here. Project capture/catalog/authority remains injected by composition. |
-| Lifecycle and admission safety | Monitoring's generations fence stale scope/source/grants; official stage helpers default observe and honor ceilings/off. Kill switch/disposal stops admission and cancels pending intent. These are monitoring-internal mechanisms supporting the SDD separation, not new common protocol fields. |
-| Result form (§6.3) | `WorkerExecutionPort.wait` returns the common status/certainty `WorkerCompletion` form; `settled` separately acknowledges raw settlement. Uncertain work is not retried and late values cannot replace terminal output. Other native APIs (e.g. read/review receipts and judge decisions) remain distinct; common boundary wrapping/schema alignment is not claimed complete. |
-| Routes and effect ownership | Parent enqueue/hook receipts and private volatile review receipts remain separate monitoring-internal routes. Neither proves actual read, approval or durable storage. Composition owns authorized delivery/UI. |
-| Fabric location (§1–2) | Only lazy-harness `packages/lazy-harness-pi` will implement the Fabric adapter, matching D1′. No Fabric implementation/dependency is supplied here; fake worker and custom-port conformance are monitoring-internal suites. |
-| TypeScript language boundary (§4, §6.2) | Monitoring is imported in-process. JSON-RPC 2.0 stdio applies to `runtime: process`, so a JSON-RPC server is not needed for this TS module repository. |
-| Git submodule pinning (§5) | The intended lazy-harness consumer pins this module repository at an exact git submodule commit. This offline example does not install or update a consuming submodule. |
-| Root declaration (§6.1) — gap | No `lazy-harness.module.json` (`lazy-harness-module/v1`) exists yet. Internal purpose-module declarations do not substitute for that repository-root manifest. Not implemented in this batch. |
-| Integer major versions (§6.4) — gap | Monitoring currently checks exact binding-version strings and protocol-1 input ports. That is not the common manifest/message/port major-version negotiation; alignment awaits the executable contract. |
-| Executable common contract (§6.6) — future | A separate contract repository (working name `lazy-harness-contract`, **not created yet**) will own declaration/RPC/result-format JSON Schemas and the shared TS/Python conformance kit. lazy-harness and every module repository will pin the same commit as a git submodule. No contract submodule or schema is added here. |
+| No Fabric in modules — **satisfied** | D1′: no package here depends on Fabric; core exports the module-owned `WorkerExecutionPort`, fakes and reusable conformance. Only lazy-harness implements the Fabric adapter. See [Worker and runtime boundary (D1′)](../../README.md#worker-and-runtime-boundary-d1). |
+| Root declaration file — **GAP** | No root declaration exists yet. Once the user-confirmed `lazy-harness-module/v1` schema lands, add one language-independent `lazy-harness.module.json` at this repository's root for all packages (`packages/core`, `packages/eval`, `hosts/*`, `modules/*`), not one per workspace. Internal purpose-module declarations do not substitute for it. No manifest is implemented in this change. |
+| JSON-RPC 2.0 over stdio — **not applicable** | Monitoring is TypeScript and imported in-process (`runtime: inprocess-ts`). Process modules use JSON-RPC 2.0 over stdio and ship an RPC server plus a TS client; no process transport is needed here. |
+| Common status/certainty result form — **mapped to `WorkerCompletion`** | `WorkerExecutionPort.wait` returns `completed` + `terminal` + `value`, or `failed` / `timed-out` / `cancelled` / `refused` + `terminal` / `uncertain` + `reason`. `settled` separately acknowledges raw settlement; uncertain work is not retried and late values cannot replace terminal output. Read/review receipts and judge decisions remain distinct native APIs; universal boundary wrapping/schema alignment is not claimed complete. |
+| Integer major versions — **GAP** | Current policy: private workspace packages are `0.0.0`; purpose-module binding versions are references/rules `2.1.1` and memory `1.0.0`, checked by exact string match; neutral input ports use integer `protocolVersion: 1`. This is not repository-wide integer-major declaration/port negotiation. Align that boundary with the user-confirmed schema; see [internal compatibility policy](module-contract.md#versioning-and-compatibility). |
 
-The SDD owns meaning; future executable forms must follow it, not redefine it. The
-monitoring suites below verify internal mechanics, not the future common conformance kit.
+**DRAFT planned root-declaration mapping — pending the user-confirmed schema (SDD §6.1).**
+The proposed `lazy-harness-module/v1` fields and required/optional split are unconfirmed.
+For monitoring, plan `runtime: inprocess-ts`; `entry` = public package exports; `requires`
+= the input ports/needs listed below; `test` = `bun run test`; `conformance` = the exported
+conformance suites listed below. One root file will describe all packages. This mapping
+is planning evidence only, not a finalized schema or a declaration of conformance.
+
+## Exported connection contract surface
+
+- **Port types and preflight:** `@lazy-harness/monitoring-core` exports
+  `WorkerExecutionPort`, `WorkerCompletion`, limits and binding/declaration helpers,
+  including `prepareMonitoringBindings` / `createConfiguredMonitoringCore`.
+  `@lazy-harness/monitoring-core/host` exports `ObservationFrame`, `HostCapabilities`,
+  `ReadRecordPort`, `ReviewSinkPort` and their scope/context/request/receipt types.
+  The rule-steering package exports `PolicyRegistry` and `RuleVerifier` seams.
+- **Fakes/adapters:** core exports `createInMemoryWorkerPort` and
+  `createHandlerWorkerPort`; core `/host` exports `createInMemoryReadRecordPort` and
+  `createInMemoryReviewSinkPort`. These do not implement Fabric or call a model.
+- **Conformance suites:** core exports `runWorkerPortConformance`; core `/host` exports
+  `runReadRecordPortConformance` and `runReviewSinkPortConformance`;
+  `@lazy-harness/monitoring-module-rule-steering` exports
+  `runPolicyRegistryPortConformance` and `runRuleVerifierPortConformance`. Consumers
+  run these against their implementations; passing a fake does not qualify a real host.
+- **Reference composition:** `examples/composition` exports `createComposition` and
+  `createFauxPi`, wiring the three purpose modules via public APIs with invented fixtures,
+  preflight, explicit stages, lifecycle fencing and separate delivery routes.
+- **Pi read attestation:** `@lazy-harness/monitoring-host-pi` exports
+  `createReadResultAttestor` and its public types listed
+  [below](#pi-read-result-exposure-attestation). It is an inactive, injected feed seam,
+  not hook installation, project discovery or authority inference.
+
+The contract below specifies monitoring's assembly, input ownership, lifecycle, stages,
+worker outcomes and receipt semantics. Composition-owned project authority and the
+deferred live consumer remain explicit; the suites verify this module-owned contract.
 
 ## Monitoring ownership and attachment sequence
 

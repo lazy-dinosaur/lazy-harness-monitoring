@@ -23,8 +23,8 @@ Records (design, decisions, measurements) stay in the lazy-harness repository un
 
 ## Module and attachment contracts
 
-- [Module shape, official registration, stage safety and deviation checklist](docs/design/module-contract.md)
-- [Host attachment, needs, lifecycle, delivery and deferred consumer handoff](docs/design/attachment-contract.md)
+- [Monitoring-internal purpose-module contract: shape, registration, stage safety and deviations](docs/design/module-contract.md)
+- [Canonical lazy-harness-monitoring connection contract: exported ports, fakes, conformance and attachment](docs/design/attachment-contract.md)
 - [Offline three-module reference composition](examples/composition/README.md)
 
 Pi-generic `createReadResultAttestor` is exported by `@lazy-harness/monitoring-host-pi`.
@@ -49,11 +49,14 @@ provides its contracts and offline template, not live integration or production 
   source freshness, dedupe and private volatile review handoff remain monitor-owned.
 
 Remaining compatibility restrictions and host duties are recorded in the module checklist.
-The attachment document is monitoring implementation notes for the canonical lazy-harness
-`module-composition.md` SDD (§6.6), not a competing common contract. Monitoring-internal
-purpose modules/Host Adapter/worker details remain canonical here. Executable common
-schemas and conformance will live in a future separately pinned contract repository.
-No module-root manifest or non-TypeScript stdio transport is implemented by this batch.
+The attachment document is the canonical connection contract owned by this module
+repository: exported port types, fakes, conformance suites, reference composition and Pi
+read attestation. It follows the short common rules in lazy-harness `module-composition.md`
+SDD §6.6; the separate contract repository is cancelled. lazy-harness installs monitoring
+as a submodule, imports its contract and implements the ports with Fabric. Monitoring's
+internal purpose-module contract remains separately scoped to `modules/*`. The root
+declaration is a GAP pending the user-confirmed schema; its planned mapping is DRAFT.
+No manifest is added here; JSON-RPC stdio is not applicable to this TS in-process module.
 
 ## Worker and runtime boundary (D1')
 

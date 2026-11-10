@@ -1,12 +1,13 @@
 # Monitoring-internal purpose-module contract
 
-Scope: the monitoring purpose modules under **this repository's `modules/*`**, not the
-common connection contract for module repositories such as monitoring and knowledge.
-This repository is canonical for its internal Host Adapter contract, WorkerExecutionPort
-details and purpose-module shape. Common connection meaning belongs to lazy-harness
-`module-composition.md` §6.6; the [monitoring implementation notes](attachment-contract.md)
-link that canonical SDD and map these APIs to it. Common executable schemas/conformance
-will live in the future separate contract repository, not this document.
+Scope: the **monitoring-internal purpose-module contract** for this repository's
+`modules/*`, not the repository-level connection contract for monitoring or other module
+repositories. The [canonical lazy-harness-monitoring connection contract](attachment-contract.md)
+defines this repository's exported ports, fakes, conformance suites and attachment
+requirements. Each module repository owns its own connection contract; lazy-harness SDD
+`module-composition.md` §6.6 holds only the short common rules. There is no separate
+contract repository. This document governs internal purpose-module shape, registration,
+stage safety and compatibility.
 
 Status: internal authoring contract derived from the three shipped purpose modules and
 public core APIs at `2066a10`, updated by the deviation fixes below. Requirements describe
