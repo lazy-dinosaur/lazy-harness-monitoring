@@ -33,6 +33,9 @@
     "modules/memory": {
       "name": "@lazy-harness/monitoring-module-memory",
       "version": "0.0.0",
+      "dependencies": {
+        "@lazy-harness/monitoring-core": "workspace:*",
+      },
     },
     "modules/references": {
       "name": "@lazy-harness/monitoring-module-references",
@@ -60,6 +63,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@lazy-harness/monitoring-core": "workspace:*",
+        "@lazy-harness/monitoring-module-memory": "workspace:*",
         "@lazy-harness/monitoring-module-references": "workspace:*",
         "@lazy-harness/monitoring-module-rule-steering": "workspace:*",
       },

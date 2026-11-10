@@ -1,6 +1,7 @@
 export * from './contracts.ts'
 export * from './references.ts'
 export * from './rule-steering.ts'
+export * from './memory.ts'
 export * from './replay.ts'
 export * from './score.ts'
 export * from './compare.ts'
