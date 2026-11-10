@@ -9,6 +9,8 @@ Frozen source/test review baseline: **`8901b9432bde05f26ff64427b078974a0b823881`
 | [p0-baseline.md](p0-baseline.md) | Observed toolchain/lock/dependencies, complete package exports and symbols, current/excluded tests, package implementation inventory and migration debts |
 | [requirements-matrix.md](requirements-matrix.md) | R1–R10 plus every P1–P7 checklist proof obligation: owner, exact symbol/test, evidence/proposed artifact, scoped status |
 | [scenarios.md](scenarios.md) | Four review fixtures: references, rule advice, private read-only memory candidate and non-knowledge repeated-test-failure advice; expressibility limits |
+| [Memory module design](../design/memory-module.md) | DESIGN ONLY / PROPOSAL: new observe-first, separately approved shadow candidate template; exact evidence, private volatile review sink, no injection/writes, R7/P5 gaps and user decisions |
+| [Host input port options](../design/host-input-ports.md) | DESIGN ONLY / PROPOSAL: current declared needs/resolution inventory; Pi vs composition vs split ownership; version-aware AlreadyRead contract and described fake conformance |
 | [References module](../../modules/references/README.md) | Approved step-3 migration: public API, host wiring, invented test-protection disposition and scripted real-module replay; semantic quality remains P5, not qualified |
 | [acceptance-criteria.draft.md](acceptance-criteria.draft.md) | **PROVISIONALLY ADOPTED FIRST BASELINE (user 2026-11-09)**: metrics/thresholds, denominators, sample sizes, durations, split protocol and stop rules; re-confirm before P5 measurement; not measured |
 
