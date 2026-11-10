@@ -9,6 +9,14 @@
         "typescript": "^7.0.2",
       },
     },
+    "examples/p1": {
+      "name": "@lazy-harness/monitoring-examples-p1",
+      "dependencies": {
+        "@lazy-harness/monitoring-core": "workspace:*",
+        "@lazy-harness/monitoring-host-pi": "workspace:*",
+        "typebox": "*",
+      },
+    },
     "hosts/pi": {
       "name": "@lazy-harness/monitoring-host-pi",
       "version": "0.0.0",
@@ -44,6 +52,8 @@
     "@lazy-harness/monitoring-core": ["@lazy-harness/monitoring-core@workspace:packages/core"],
 
     "@lazy-harness/monitoring-eval": ["@lazy-harness/monitoring-eval@workspace:packages/eval"],
+
+    "@lazy-harness/monitoring-examples-p1": ["@lazy-harness/monitoring-examples-p1@workspace:examples/p1"],
 
     "@lazy-harness/monitoring-host-pi": ["@lazy-harness/monitoring-host-pi@workspace:hosts/pi"],
 

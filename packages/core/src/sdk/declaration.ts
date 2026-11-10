@@ -52,7 +52,7 @@ export type MonitoringModuleDeclaration = Readonly<{ purpose: Readonly<{ questio
 export type MonitoringJobOverride = Readonly<{ id: string; enabled?: boolean; report?: MonitoringReportMode; riskTier?: MonitoringRiskTier }>
 export type MonitoringEffectiveJob = Readonly<{ id: string; enabled: boolean; report: MonitoringReportMode; riskTier: MonitoringRiskTier; declared: MonitoringJobDeclaration }>
 
-import { MONITORING_DELIVERY_POINTS, MONITORING_TRIGGER_POINTS } from './trigger-points.ts'
+import { monitoringWatchSupport } from './trigger-points.ts'
 const unique = (xs: readonly string[]) => new Set(xs).size === xs.length
 /** Validate an author declaration against the binding's host grants; returns the frozen declaration and its canonical hash. */
 export function validateMonitoringModuleDeclaration(input: unknown, grants: Grants): { declaration: MonitoringModuleDeclaration; hash: string } {
@@ -63,8 +63,8 @@ export function validateMonitoringModuleDeclaration(input: unknown, grants: Gran
   const d = value as MonitoringModuleDeclaration
   if (!unique(d.watch.events) || !unique(d.watch.kinds)) fail('/declaration/watch', 'Watched events and kinds must be unique')
   d.watch.events.forEach((e, i) => {
-    if (Object.hasOwn(MONITORING_DELIVERY_POINTS, e)) fail(`/declaration/watch/events/${i}`, 'A delivery-only point cannot be watched')
-    if (e.includes('.') && !Object.hasOwn(MONITORING_TRIGGER_POINTS, e)) fail(`/declaration/watch/events/${i}`, 'Unknown trigger point')
+    const support = monitoringWatchSupport(e)
+    if (support !== 'watchable') fail(`/declaration/watch/events/${i}`, `${support} watch cannot be judged: ${e}`)
   })
   if (d.needs && !unique(d.needs.map(n => n.id))) fail('/declaration/needs', 'Need identifiers must be unique')
   if (!unique(d.jobs.map(j => j.id))) fail('/declaration/jobs', 'Job identifiers must be unique')

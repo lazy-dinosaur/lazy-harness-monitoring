@@ -23,14 +23,15 @@ export type HostSupportIssue = Readonly<{ moduleId: string; kind: 'event' | 'act
 export function validateHostCapabilities(c: HostCapabilities): HostCapabilities {
   const known = new Set<string>(observationEvents)
   if (!c || typeof c.hostId !== 'string' || !c.hostId || typeof c.version !== 'string' || !Array.isArray(c.events) || !Array.isArray(c.actions)) throw new Error('invalid host capabilities')
+  if (c.actions.some(a => !['inject-context', 'steer', 'block-tool-call'].includes(a))) throw new Error('unknown host action')
   const unknown = c.events.filter(e => !known.has(e)); if (unknown.length) throw new Error(`host emits events outside the core vocabulary: ${unknown.join(', ')}`)
   if (!['full', 'tail', 'none'].includes(c.snapshot)) throw new Error('invalid host snapshot kind')
   return Object.freeze({ ...c, events: Object.freeze([...c.events]), actions: Object.freeze([...c.actions]) })
 }
 
 /** Which declared trigger points / required actions a host cannot serve for the given modules. Empty = supported. */
-export function hostSupportIssues(capabilities: HostCapabilities, modules: readonly Readonly<{ id: string; watch: readonly string[]; actions?: readonly HostAction[] }>[]): readonly HostSupportIssue[] {
-  const events = new Set(capabilities.events), actions = new Set(capabilities.actions), out: HostSupportIssue[] = []
+export function hostSupportIssues(capabilities: HostCapabilities, modules: readonly Readonly<{ id: string; watch: readonly string[]; actions?: readonly string[] }>[]): readonly HostSupportIssue[] {
+  const events = new Set(capabilities.events), actions = new Set<string>(capabilities.actions), out: HostSupportIssue[] = []
   for (const m of modules) {
     for (const e of resolveMonitoringWatch(m.watch).sourceEvents) if (!events.has(e)) out.push({ moduleId: m.id, kind: 'event', name: e })
     for (const a of m.actions ?? []) if (!actions.has(a)) out.push({ moduleId: m.id, kind: 'action', name: a })

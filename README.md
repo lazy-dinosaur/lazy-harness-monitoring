@@ -15,9 +15,65 @@ TypeScript, Fabric-independent (ADR 0061 in lazy-harness); boundaries stay langu
 
 The core never imports a host. It defines the **Host Adapter contract** (`packages/core/src/host`): the frame vocabulary
 and `ObservationFrame`, `HostCapabilities` (events emitted, actions such as inject-context / steer / block-tool-call,
-snapshot depth), `hostSupportIssues` (modules needing an unsupported trigger point or action are refused, not silently
-idle) and `frameSequenceIssues` (conformance every adapter passes). Pipelines take frames through `accept(frame)`.
+snapshot depth), `hostSupportIssues` and `frameSequenceIssues`. `prepareMonitoringBindings` / `createConfiguredMonitoringCore` now require `capabilities`, and refuse unsupported effective watches/actions **before any factory or engine is constructed**. Legacy bindings without a v2 declaration need explicit `hostRequirements`; trusted `internalActions` maps module-local actions only, never reserved host actions. Low-level constructors/attach are trusted mechanics, not safe startup. Pipelines take frames through `accept(frame)`.
 
 Modules: `references` (U1), `rule-steering` (U6), `memory` (new). Data (traces, feedback marks, gold sets) is kept per module.
 
 Records (design, decisions, measurements) stay in the lazy-harness repository under `.lazy-harness/`; see `MIGRATION.md`.
+
+## Worker and runtime boundary (D1')
+
+No package here depends on Fabric. Core owns `WorkerExecutionPort<Input, Output>`, exported from
+`@lazy-harness/monitoring-core`, with `start`, `begin`, `wait`, `settled`, `cancel`, `stop`, `dispose`,
+`idle`, `getStatus` and explicit limits. `createInMemoryWorkerPort` supplies a fake/in-process implementation;
+`createHandlerWorkerPort` adapts existing handlers. `runWorkerPortConformance(makePort)` is a reusable,
+dependency-free suite (24 checks for the in-memory implementation), not a real-host qualification.
+The `lazy-harness` composition repository owns the EXACT-pinned Fabric implementation and bun/Node >=24
+probe in issue #1 P7 thin-consumer work, out of repo. The port does not mirror Fabric's API.
+
+`MonitoringModuleRuntime` accepts optional `workerPort`; otherwise it uses the handler adapter.
+It owns that port's lifecycle: do not share a port between independently managed runtimes.
+For compatibility it starts running by default. `stop` rejects new work/cancels queued and active logical work;
+`start` after stop requires raw idle; `dispose` is permanent. Lifetime accounting does not reset on restart.
+Defaults: `maxActive: 4`, `maxQueued: 64`, `maxWork: 1024`, `jobTimeoutMs: 30000`.
+Timeout/cancel returns a terminal uncertain outcome and ignores late values, but **cannot hard-kill a promise**.
+Raw capacity and budget reservations remain owned until `settled` acknowledges physical completion;
+hard termination belongs to the implementation. A failing port with unknown raw state retains reservations.
+
+Diagnostics are bounded: runtime `maxOutcomes` (default 256), mailbox `maxTrace` (256), Pi `maxDelivered` (256),
+with eviction counters. Runtime `outcomes` is now a readonly snapshot.
+Protection is separate: `MemoryIdempotencyStore(maxKeys = 4096)` and mailbox `maxSeen` (4096) never evict
+keys during their instance lifetime, including uncertain keys. Capacity overflow refuses new work/delivery.
+There is no automatic protection-key expiry: replace these stores only after the effect/session scope is
+closed and reconciled, never as an LRU/TTL optimization. Restart durability remains unsupported by default.
+`ApprovedBudgetGate(maxWindows = 1024).revoke(moduleId, jobId?)` explicitly closes a budget window;
+its reservations remain until raw settlement. Reapproval cannot replace a live reservation.
+
+## Trigger and report compatibility changes
+
+- Named points require plain own-data payloads with the hook's required fields. Input points require explicit
+  `interactive`/`rpc` user source plus text. Missing source is not user authority. Raw predicates remain a
+  trusted compatibility escape hatch, **not** payload validation.
+- `user.extension-input` was removed in favor of `extension.input`: extension-origin input must not match any
+  `user.*` point. `user.message` also requires explicit user source. Hosts must supply proven source metadata,
+  not infer it from a user role. Real pinned-SDK normalization remains UNVERIFIED.
+- `monitoringWatchSupport` / `assertMonitoringWatchable` distinguish runnable watches from control-only,
+  delivery-only and unknown vocabulary. Declarations/composition reject unjudgeable watches, including
+  `run.aborted`. `resolveMonitoringWatch` may still inspect observational predicates; that is not admission.
+- `model.before-call` metadata now names `context_with_system`.
+- Runtime `report` is a synchronous receipt-returning sink: `ReportEnqueueReceipt` has matching `reportId`
+  (`monitoringReportId(report)`) and status `enqueued`, `failed` or `unknown`. These types/helper are on the
+  public `engine/monitoring-engine-runtime.ts` export. Absent/throwing/invalid sinks never set `reported: true`.
+  `reported` means **enqueue accepted**, not delivered. Prepared jobs are not rerun on receiver failure.
+- Pi `createParentReportDelivery().enqueue` supplies that receipt contract; pass `report: delivery.enqueue`.
+  The old boolean `onReport` helper remains for compatibility. `deliveryReceipts` are separate `delivered`
+  receipts for the hook result, not independently observed actual provider input. Stable content/scope/source
+  identities prevent duplicate callbacks from creating another message; changed content/revisions remain distinct.
+
+## Qualification reviews
+
+- [Qualification index (issue #1, P0/P1)](docs/qualification/README.md)
+- [P1 API/condition review and proposed deltas](docs/qualification/p1-api-condition-review.md)
+- [Offline public-API examples and reproduction](examples/p1/README.md)
+
+These are scoped review fixtures, not live-use approval or SDK qualification.

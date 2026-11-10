@@ -1,3 +1,5 @@
+import { assertMonitoringWatchable } from './trigger-points.ts'
+import { hostSupportIssues, validateHostCapabilities, type HostCapabilities } from '../host/contract.ts'
 import type { Static, TSchema } from 'typebox'
 import Value from 'typebox/value'
 import type { BridgeLimits, Grants, JudgeBatchPort, Limits, ObservationLimits, Processor } from './contracts.generated.ts'
@@ -5,11 +7,11 @@ import { validateMonitoringModuleDeclaration, effectiveMonitoringJobs, effective
 import { MonitoringConfigurationSchema, type MonitoringConfiguration, type MonitoringReadonly } from './schema.ts'
 import { configurationFailure, freezeMonitoringData, MonitoringConfigurationError } from './diagnostics.ts'
 
-export type MonitoringModuleBinding = Readonly<{ version: string; grants: Grants; destination: string; declaration?: MonitoringModuleDeclaration; declarationHash?: string; build(settings: unknown): Processor }>
-export function defineMonitoringModule<const S extends TSchema>(definition: { version: string; settingsSchema: S; grants: Grants; destination: string; declaration?: unknown; create(settings: MonitoringReadonly<Static<S>>): Processor }): MonitoringModuleBinding {
+export type MonitoringModuleBinding = Readonly<{ version: string; grants: Grants; destination: string; declaration?: MonitoringModuleDeclaration; declarationHash?: string; hostRequirements?: Readonly<{ events: readonly string[]; actions: readonly string[] }>; build(settings: unknown): Processor }>
+export function defineMonitoringModule<const S extends TSchema>(definition: { version: string; settingsSchema: S; grants: Grants; destination: string; declaration?: unknown; hostRequirements?: Readonly<{ events: readonly string[]; actions: readonly string[] }>; create(settings: MonitoringReadonly<Static<S>>): Processor }): MonitoringModuleBinding {
   const schema = freezeMonitoringData(Value.Clone(definition.settingsSchema))
   const declared = definition.declaration === undefined ? undefined : validateMonitoringModuleDeclaration(definition.declaration, definition.grants)
-  const metadata = freezeMonitoringData(JSON.parse(JSON.stringify({ version: definition.version, grants: definition.grants, destination: definition.destination, ...(declared ? { declaration: declared.declaration, declarationHash: declared.hash } : {}) })))
+  const metadata = freezeMonitoringData(JSON.parse(JSON.stringify({ version: definition.version, grants: definition.grants, destination: definition.destination, ...(definition.hostRequirements ? { hostRequirements: definition.hostRequirements } : {}), ...(declared ? { declaration: declared.declaration, declarationHash: declared.hash } : {}) })))
   return Object.freeze({ ...metadata, build(settings: unknown) {
     try {
       const value = JSON.parse(JSON.stringify(settings))
@@ -26,6 +28,9 @@ export type MonitoringHostBindings = Readonly<{
   judges?: Readonly<Record<string, JudgeBatchPort>>
   allowedSourceScopes: readonly MonitoringConfiguration['source']['scope'][]
   maxModules: number
+  capabilities: HostCapabilities
+  /** Explicit trusted mapping for module-local actions, never for reserved host actions. */
+  internalActions?: readonly string[]
   limitCeilings?: MonitoringLimitCeilings
 }>
 export function resolveMonitoringBinding<T>(registry: Readonly<Record<string, T>> | undefined, id: string, path: string): T {
@@ -57,6 +62,18 @@ export function prepareMonitoringBindings(config: MonitoringConfiguration, host:
     if (binding.version !== m.version) configurationFailure('MODULE_VERSION_MISMATCH', `/modules/${i}/version`, 'Module version does not match the explicit host binding')
     return { request: m, binding, metadata: freezeMonitoringData(JSON.parse(JSON.stringify({ grants: binding.grants, destination: binding.destination }))), jobs: effectiveMonitoringJobs(binding.declaration, m.jobs, `/modules/${i}/jobs`), watch: effectiveMonitoringWatch(binding.declaration, m.watch?.events, `/modules/${i}/watch`), stage: effectiveMonitoringStage(binding.declaration, (m as any).stage, `/modules/${i}/stage`), declarationHash: binding.declarationHash }
   })
+  // All modules must pass before ANY factory runs. Low-level runtimes/attach remain trusted mechanics.
+  let capabilities: HostCapabilities
+  try { capabilities = validateHostCapabilities(host.capabilities) } catch { return configurationFailure('HOST_UNSUPPORTED', '/bindings/capabilities', 'Invalid or missing host capabilities') }
+  const hostActions = new Set(['inject-context', 'steer', 'block-tool-call'])
+  for (const { request, binding, jobs, watch } of entries) {
+    const requirements = binding.declaration ? { events: watch!, actions: jobs!.filter(j => j.enabled).flatMap(j => j.declared.grants.actions) } : binding.hostRequirements
+    if (!requirements) configurationFailure('HOST_UNSUPPORTED', '/modules', `Module ${request.id.slice(0, 80)} capability requirements missing`)
+    try { assertMonitoringWatchable(requirements.events) } catch (e) { configurationFailure('UNSUPPORTED_EVENT', '/modules', `Module ${request.id.slice(0, 80)}: ${(e as Error).message.slice(0, 200)}`) }
+    const actions = requirements.actions.filter(a => a !== 'monitoring.selected-material' && !(host.internalActions?.includes(a) && !hostActions.has(a)))
+    const issues = hostSupportIssues(capabilities, [{ id: request.id, watch: requirements.events, actions }])
+    if (issues.length) configurationFailure('HOST_UNSUPPORTED', '/modules', issues.slice(0, 32).map(i => `Module ${i.moduleId.slice(0, 80)} unsupported ${i.kind}: ${i.name.slice(0, 80)}`).join('; '))
+  }
   const processors = entries.map(({ request, binding, metadata, jobs, watch, stage, declarationHash }, i) => {
     let spec: Processor
     try { spec = binding.build(request.settings) } catch (e) { if (e instanceof MonitoringConfigurationError) throw e; return configurationFailure('MODULE_FACTORY', `/modules/${i}`, 'Host module factory failed') }

@@ -5,7 +5,8 @@
   "workspaces": [
     "packages/*",
     "hosts/*",
-    "modules/*"
+    "modules/*",
+    "examples/*"
   ],
   "scripts": {
     "test": "bun test packages/core/test hosts/pi/test --path-ignore-patterns=**/pending-from-core/**",

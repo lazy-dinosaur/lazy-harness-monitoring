@@ -1,4 +1,4 @@
-# Qualification review — issue #1, phase P0
+# Qualification review — issue #1, phases P0/P1
 
 Frozen source/test review baseline: **`8901b9432bde05f26ff64427b078974a0b823881`** (`8901b94`). Documentation branch: `qualification/p0`. This directory is an audit and decision package, not source implementation, activation approval, SDK qualification or release readiness.
 
@@ -10,6 +10,14 @@ Frozen source/test review baseline: **`8901b9432bde05f26ff64427b078974a0b823881`
 | [requirements-matrix.md](requirements-matrix.md) | R1–R10 plus every P1–P7 checklist proof obligation: owner, exact symbol/test, evidence/proposed artifact, scoped status |
 | [scenarios.md](scenarios.md) | Four review fixtures: references, rule advice, private read-only memory candidate and non-knowledge repeated-test-failure advice; expressibility limits |
 | [acceptance-criteria.draft.md](acceptance-criteria.draft.md) | **PROVISIONALLY ADOPTED FIRST BASELINE (user 2026-11-09)**: metrics/thresholds, denominators, sample sizes, durations, split protocol and stop rules; re-confirm before P5 measurement; not measured |
+
+## P1 review receipt and next gate
+
+- [p1-api-condition-review.md](p1-api-condition-review.md): original 29-condition review and approved implementation ledger. Deltas **1/2/3/6/7/8/9/12 implemented**; 4/5/10/11 remain proposals. D1' is authoritative.
+- [Runnable offline examples](../../examples/p1/README.md): public-export consumers, explicit existing-package link setup (no install), scripted judge/worker outputs.
+- Original P1 boundary/scenario/API fixtures were flipped for corrected behavior. Six new follow-up test files cover startup, report identity, lifecycle, retention, receipts and worker-port conformance. Pre-existing helper changes and reasons are listed in the P1 ledger.
+- Final exact scoped command: `bun test packages/core/test hosts/pi/test/pi-host.test.ts` → **244 pass / 0 fail, 1515 expect() calls, 244 tests across 24 files**. All three `bunx tsc -p` commands (core, Pi, examples) exited 0 with no output; verbatim summary is in the P1 review.
+- This verifies finite offline startup/trigger/lifecycle/retention/receipt/worker-port mechanics, not whole P2/P3 safety closure. Real SDK/physical worker/actual provider-input receipt and D2 metrics remain UNVERIFIED. D1'/D2 remain in force; no live/paid/semantic qualification or cutover approval.
 
 ## P0 exit criterion and present gate
 

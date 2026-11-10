@@ -11,7 +11,7 @@ const question = { instructions: 'Synthetic trigger test', criteria: { run: 'r',
 const job = { id: 'deliver', form: 'template', riskTier: 'read-only', report: { supported: ['never', 'always'], default: 'always' }, idempotency: 'per-event', output: 'candidate', grants: { actions: ['monitoring.selected-material'], referenceKinds: ['user-text'] } }
 const grants = { actions: ['monitoring.selected-material'], referenceKinds: ['user-text'] }
 const define = (events: string[]) => defineMonitoringModule({ version: '1', settingsSchema: Type.Object({}, { additionalProperties: false }), grants, destination: 'sink', declaration: { purpose: { question }, watch: { events, kinds: ['user-text'] }, jobs: [job] }, create: () => ({ id: 'trigger.mod', eventKinds: ['user.input'], referenceKinds: ['user-text'], allowedActions: ['monitoring.selected-material'], run: () => [] }) })
-const prepare = (binding: any, watch?: string[]) => prepareMonitoringBindings(parseMonitoringConfiguration({ contractVersion: 1, source: { kind: 'host-events', scope: 'host-supplied-events' }, goal: 'g', receiver: 'r', modules: [{ id: 'trigger.mod', version: '1', ...(watch ? { watch: { events: watch } } : {}) }] }), { modules: { 'trigger.mod': binding }, allowedSourceScopes: ['host-supplied-events'], maxModules: 4 })
+const prepare = (binding: any, watch?: string[]) => prepareMonitoringBindings(parseMonitoringConfiguration({ contractVersion: 1, source: { kind: 'host-events', scope: 'host-supplied-events' }, goal: 'g', receiver: 'r', modules: [{ id: 'trigger.mod', version: '1', ...(watch ? { watch: { events: watch } } : {}) }] }), { modules: { 'trigger.mod': binding }, allowedSourceScopes: ['host-supplied-events'], maxModules: 4, capabilities: { hostId: 'fixture', version: '1', events: ['input', 'turn_end', 'tool_call'], actions: ['inject-context'], snapshot: 'none' }, internalActions: ['rule.notice', 'rule.block'] })
 const code = (f: () => unknown) => { try { f(); return 'ok' } catch (e) { return e instanceof MonitoringConfigurationError ? (e as any).code : 'other:' + String(e) } }
 
 describe('trigger points (task154, model calls 0)', () => {
@@ -21,13 +21,13 @@ describe('trigger points (task154, model calls 0)', () => {
   test('conditions are deterministic over the frame payload', () => {
     const w = resolveMonitoringWatch(['user.steer', 'tool.failed'])
     expect(w.sourceEvents).toEqual(['input', 'tool_execution_end']); expect(w.conditional).toBe(true)
-    expect(w.matches({ sourceEvent: 'input', payload: { streamingBehavior: 'steer' } })).toBe(true)
+    expect(w.matches({ sourceEvent: 'input', payload: { source: 'interactive', text: 'fix', streamingBehavior: 'steer' } })).toBe(true)
     expect(w.matches({ sourceEvent: 'input', payload: { text: 'new request' } })).toBe(false)
-    expect(w.matches({ sourceEvent: 'tool_execution_end', payload: { isError: true } })).toBe(true)
-    expect(w.matches({ sourceEvent: 'tool_execution_end', payload: { isError: false } })).toBe(false)
+    expect(w.matches({ sourceEvent: 'tool_execution_end', payload: { toolCallId: 't', toolName: 'bash', isError: true } })).toBe(true)
+    expect(w.matches({ sourceEvent: 'tool_execution_end', payload: { toolCallId: 't', toolName: 'bash', isError: false } })).toBe(false)
     expect(w.matches({ sourceEvent: 'tool_execution_end', payload: null })).toBe(false)
     const p = resolveMonitoringWatch(['user.prompt'])
-    expect(p.matches({ sourceEvent: 'input', payload: { source: 'interactive' } })).toBe(true)
+    expect(p.matches({ sourceEvent: 'input', payload: { source: 'interactive', text: 'request' } })).toBe(true)
     expect(p.matches({ sourceEvent: 'input', payload: { source: 'extension' } })).toBe(false)
     expect(resolveMonitoringWatch(['message_end']).conditional).toBe(false)
     expect(() => resolveMonitoringWatch(['model.before-call'])).toThrow('delivery-only')
