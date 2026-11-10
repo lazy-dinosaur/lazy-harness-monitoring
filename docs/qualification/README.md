@@ -10,6 +10,7 @@ Frozen source/test review baseline: **`8901b9432bde05f26ff64427b078974a0b823881`
 | [requirements-matrix.md](requirements-matrix.md) | R1–R10 plus every P1–P7 checklist proof obligation: owner, exact symbol/test, evidence/proposed artifact, scoped status |
 | [scenarios.md](scenarios.md) | Four review fixtures: references, rule advice, private read-only memory candidate and non-knowledge repeated-test-failure advice; expressibility limits |
 | [acceptance-criteria.draft.md](acceptance-criteria.draft.md) | **PROVISIONALLY ADOPTED FIRST BASELINE (user 2026-11-09)**: metrics/thresholds, denominators, sample sizes, durations, split protocol and stop rules; re-confirm before P5 measurement; not measured |
+| [p5-plan.md](p5-plan.md) | P5 plan for user approval: migration prerequisites, cited prior evidence, threshold re-confirmation, sealed dev/holdout protocol, proposed model/budget envelope and explicit decisions; no measurement or activation approval |
 
 ## P1 review receipt and next gate
 
