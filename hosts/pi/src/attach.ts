@@ -3,7 +3,8 @@
 import { observationEvents, validateHostCapabilities, type HostCapabilities, type MonitoringFrameTarget } from '@lazy-harness/monitoring-core/host'
 import type { ObservationContext, PiMonitoringObserver } from './observer.ts'
 
-export const piHostCapabilities: HostCapabilities = validateHostCapabilities({ hostId: 'pi', version: '1.5', events: [...observationEvents], actions: ['inject-context', 'steer', 'block-tool-call'], snapshot: 'tail' })
+// Add steer/block-tool-call only when an executor exists.
+export const piHostCapabilities: HostCapabilities = validateHostCapabilities({ hostId: 'pi', version: '1.5', events: [...observationEvents], actions: ['inject-context'], snapshot: 'tail' })
 
 type PiOn = { on(name: string, handler: (event: any, ctx: ObservationContext) => undefined): unknown }
 /** Install AFTER the observer extension. Notification-only: returns undefined from every hook. */
