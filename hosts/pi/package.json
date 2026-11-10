@@ -8,5 +8,11 @@
   },
   "dependencies": {
     "@lazy-harness/monitoring-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.0"
   }
 }

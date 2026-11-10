@@ -53,7 +53,8 @@ export function createHandlerWorkerPort(handlers: Readonly<Record<string, JobHan
 }
 export type Report = Readonly<{ moduleId: string; jobId: string; eventId: string; sessionId: string; mode: 'always' | 'on-result'; text: string; riskTier: string }>
 export type ReportEnqueueReceipt = Readonly<{ reportId: string; status: 'enqueued' | 'failed' | 'unknown'; reason?: string }>
-export type ReportDeliveryReceipt = Readonly<{ reportId: string; status: 'delivered'; boundary: 'context_with_system' }>
+/** Hook output acknowledgement only; later extensions may remove it before provider input. */
+export type ReportDeliveryReceipt = Readonly<{ reportId: string; status: 'delivered'; kind: 'hook-boundary'; boundary: 'context_with_system' }>
 export function monitoringReportId(report: Report): string { return canonicalJsonHash(report) }
 export type JobOutcome = Readonly<{ moduleId: string; jobId: string; eventId: string; key?: string; status: 'executed' | 'proposed' | 'prepared' | 'rejected' | 'uncertain' | 'skipped'; reason: string; effectId?: string; reported: boolean; reportReceipt?: ReportEnqueueReceipt }>
 export type RegisteredModule = Readonly<{ moduleId: string; declaration: MonitoringModuleDeclaration; declarationHash: string; jobs: readonly MonitoringEffectiveJob[]; /** task154 run stage (default active). */ stage?: 'off' | 'observe' | 'shadow' | 'active' }>

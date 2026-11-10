@@ -37,7 +37,7 @@ test('Pi enqueue and hook delivery are separate matching receipts, with stale/sc
   expect(p.delivery.deliveryReceipts).toEqual([])
   expect(p.delivery.enqueue(report).status).toBe('failed')
   p.hooks.get('context_with_system')!({ messages: [] }, p.ctx)
-  expect(p.delivery.deliveryReceipts).toEqual([{ reportId: receipt.reportId, status: 'delivered', boundary: 'context_with_system' }])
+  expect(p.delivery.deliveryReceipts).toEqual([{ reportId: receipt.reportId, status: 'delivered', kind: 'hook-boundary', boundary: 'context_with_system' }])
   p.hooks.get('context_with_system')!({ messages: [] }, p.ctx)
   expect(p.delivery.deliveryReceipts).toHaveLength(1)
   expect(p.delivery.enqueue({ ...report, sessionId: 'other' }).status).toBe('failed')
