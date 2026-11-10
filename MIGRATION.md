@@ -5,6 +5,23 @@ Source: the lazy-harness repository branch `work/monitoring-engine-v2` (commit `
 `.lazy-harness/spec/platform/monitoring-core.md` and `pi-monitoring-observation.md` (contracts),
 `.lazy-harness/tests/monitoring-*.md` (acceptance), ADR 0061 / 0062.
 
+## R7 opt-in persistence (additive, not BREAKING)
+
+Default runtime/mailbox storage remains in-memory. Hosts may now open a module-owned schema-v1
+`MonitoringStateSession` with `openMonitoringState(port, binding)` (core root export) and pass it as
+`state` to one module runtime and its carry mailbox, mutually exclusive with the old `idempotency`
+option. The optional file backend lives only at `@lazy-harness/monitoring-core/state-file`.
+Use the same binding/partition on restart, provide authoritative config/model/source/scope facts,
+and reopen on host generation changes. Never replace/delete a protection store to reset a budget.
+
+This version drops unstarted local work, never replays handlers/reports, retains uncertain attempts,
+and blocks fresh dispatch for unresolved recovered raw work. External worker adapters receive optional
+`WorkerJobRequest.stateAttempt` identity/fence metadata; they must enforce/reconcile it at the target.
+Delivery acknowledgement is explicit and separate from enqueue. Full per-run budget caps remain
+charged across restart. IO/schema/capacity failures fail closed; no automatic migration or reconciliation.
+No host wiring, module connection manifest, read-record persistence or durable review sink is included.
+See [API, storage requirements and loss policy](README.md#optional-restart-state-r7).
+
 Order (each step keeps its own tests green before the next):
 
 1. **done** (`packages/core`: 30 source files from the v2 engine closure, 13 test files / 159 tests green, `tsc` clean; tests that need the real Pi SDK fixture or v1 examples wait in `packages/pi-host/test/pending-from-core/`) `packages/core` — `packages/lazy-harness-pi/monitoring/*` (public SDK, schema, declaration, trigger points, canonical JSON, models) and the engine scripts `.lazy-harness/scripts/monitoring-core*.ts`, `monitoring-engine-*.ts`, `monitoring-trace.ts`, redaction; tests `tests/lazy-harness/monitoring-core*.test.ts`, `monitoring-engine-*`, `monitoring-trigger-points`, `monitoring-trace-stage`, `canonical-json-parity`, package monitoring tests.
