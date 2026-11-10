@@ -6,7 +6,7 @@ export type CarryScope = Readonly<{ sessionId: string; branchId: string; turn: n
 export type CarryDependency = Readonly<{ id: string; version: string }>
 export type CarryItem = Readonly<{ id: string; reportId?: string; moduleId: string; scope: CarryScope; createdAt: number; dependencies: readonly CarryDependency[]; text: string }>
 export type CarryDelivery = Readonly<{ item: CarryItem; carried: boolean; ageMs: number; text: string }>
-export type CarryTrace = Readonly<{ at: number; id: string; reason: 'queued' | 'delivered_same_turn' | 'delivered_carried' | 'scope_changed' | 'expired_age' | 'carry_exceeded' | 'source_changed' | 'duplicate' | 'overflow' | 'invalid' | 'seen_capacity' }>
+export type CarryTrace = Readonly<{ at: number; id: string; reason: 'queued' | 'delivered_same_turn' | 'delivered_carried' | 'scope_changed' | 'expired_age' | 'carry_exceeded' | 'source_changed' | 'source_check_failed' | 'duplicate' | 'overflow' | 'invalid' | 'seen_capacity' }>
 export type CarryOptions = Readonly<{ maxAgeMs: number; maxCarryTurns: number; maxItems: number; maxTextBytes: number; maxTrace?: number; maxSeen?: number; sourceVersion(id: string): string | undefined }>
 
 const text = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length > 0 && v.length <= max
@@ -33,7 +33,8 @@ export class ContextCarryMailbox {
     if (this.items.size >= this.options.maxItems) { this.note(now, item.id, 'overflow'); return false }
     this.seen.add(item.id); this.items.set(item.id, Object.freeze({ ...item, scope: Object.freeze({ ...item.scope }), dependencies: Object.freeze(item.dependencies.map(d => Object.freeze({ ...d }))) })); this.note(now, item.id, 'queued'); return true
   }
-  /** Called at a main request (context hook). Returns material to append now; drops ineligible items with a reason. */
+  /** Called at a main request (context hook). Drops ineligible items, including failed source checks,
+   * with a bounded reason. Seen identities remain protected; one lookup fault cannot block other items. */
   take(scope: CarryScope, now: number, firstRequestOfTurn: boolean): readonly CarryDelivery[] {
     if (!scopeOk(scope)) throw new Error('invalid carry scope')
     const out: CarryDelivery[] = []
@@ -42,7 +43,9 @@ export class ContextCarryMailbox {
       if (item.scope.sessionId !== scope.sessionId || item.scope.branchId !== scope.branchId || scope.turn < item.scope.turn) { drop('scope_changed'); continue }
       const ageMs = now - item.createdAt
       if (ageMs > this.options.maxAgeMs) { drop('expired_age'); continue }
-      if (item.dependencies.some(d => this.options.sourceVersion(d.id) !== d.version)) { drop('source_changed'); continue }
+      try {
+        if (item.dependencies.some(d => this.options.sourceVersion(d.id) !== d.version)) { drop('source_changed'); continue }
+      } catch { drop('source_check_failed'); continue }
       const gap = scope.turn - item.scope.turn
       if (gap > this.options.maxCarryTurns || (gap === 1 && !firstRequestOfTurn)) { drop('carry_exceeded'); continue }
       const carried = gap === 1

@@ -7,6 +7,8 @@ import { assertMonitoringWatchable, resolveMonitoringWatch } from '../sdk/trigge
 import { createInMemoryWorkerPort } from '../sdk/worker-execution-memory.ts'
 import type { WorkerExecutionPort, WorkerExecutionLimits, WorkerCompletion } from '../sdk/worker-execution.ts'
 import { canonicalJsonHash } from '../sdk/canonical-json.ts'
+import { parseMonitoringJsonData } from '../sdk/schema.ts'
+import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import type { MonitoringEffectiveJob, MonitoringModuleDeclaration } from '../sdk/declaration.ts'
 import type { RealtimeWatchModule } from './monitoring-core-realtime-selection.ts'
 import type { Grants } from '../sdk/contracts.generated.ts'
@@ -16,7 +18,29 @@ export type EvidenceItem = Readonly<{ id: string; kind: string; version: string;
 export type Trigger = Readonly<{ moduleId: string; eventId: string; sessionId: string; evidence: readonly EvidenceItem[]; subjectKey?: string; turn?: number; origin?: Readonly<{ moduleId: string; jobId: string; depth: number }>; /** Present when the module needs `judge.view`: the exact judge view of the triggering event. */ view?: unknown }>
 export type BudgetLease = Readonly<{ consume(kind: CostKind, amount: number): void; remaining(kind: CostKind): number }>
 export type JobContext = Readonly<{ trigger: Trigger; job: MonitoringEffectiveJob; lease?: BudgetLease; signal: AbortSignal }>
+/** Completions are bounded plain JSON data. Report text is at most 65536 UTF-8 bytes; effect IDs are nonempty, at most 512 characters. */
 export type JobResult = Readonly<{ status: 'executed' | 'proposed' | 'prepared' | 'rejected' | 'unknown'; effectId?: string; report?: Readonly<{ text: string }>; output?: unknown }>
+// Validate/copy the whole injected completion before reading its discriminants or constructing reports.
+function parseWorkerCompletion(input: unknown): WorkerCompletion<JobResult> {
+  const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
+  const only = (v: Record<string, unknown>, allowed: readonly string[]) => Object.keys(v).every(k => allowed.includes(k))
+  const bad = (): never => { throw new Error('malformed worker result') }
+  if (!object(input)) return bad()
+  const c = parseMonitoringJsonData(input)
+  if (!object(c)) return bad()
+  if (c.status !== 'completed') {
+    if (!only(c, ['status', 'certainty', 'reason']) || !['failed', 'timed-out', 'cancelled', 'refused'].includes(c.status as string) || !['terminal', 'uncertain'].includes(c.certainty as string) || typeof c.reason !== 'string' || !c.reason) return bad()
+  } else {
+    if (!only(c, ['status', 'certainty', 'value']) || c.certainty !== 'terminal' || !object(c.value)) return bad()
+    const r = c.value
+    if (!only(r, ['status', 'effectId', 'report', 'output']) || !['executed', 'proposed', 'prepared', 'rejected', 'unknown'].includes(r.status as string)) return bad()
+    if (Object.hasOwn(r, 'effectId') && (typeof r.effectId !== 'string' || !r.effectId || r.effectId.length > 512)) return bad()
+    if (Object.hasOwn(r, 'report') && (!object(r.report) || !only(r.report, ['text']) || typeof r.report.text !== 'string' || Buffer.byteLength(r.report.text, 'utf8') > 65536)) return bad()
+    // Optional output is module-owned JSON, not a provider-specific schema. The shared parser bounds it.
+  }
+  return freezeMonitoringData(c) as WorkerCompletion<JobResult>
+}
+
 export type JobHandler = Readonly<{ run(context: JobContext): JobResult | Promise<JobResult>; idempotencyKey?(trigger: Trigger): string | undefined }>
 export type WorkerJobRequest = Readonly<{ handlerId: string; context: Omit<JobContext, 'signal'> }>
 /** Compatibility adapter: trusted existing handlers run through the same worker port contract. */
@@ -156,7 +180,8 @@ export class MonitoringModuleRuntime {
       const ticket = this.work.begin({ handlerId: `${m.moduleId}.${job.id}`, context: Object.freeze({ trigger, job, ...(lease ? { lease } : {}) }) }, { signal: parent })
       // Logical timeout must not release a budget reservation. Raw acknowledgement owns settlement.
       void this.work.settled(ticket).then(() => lease?.settle(), () => { /* Unknown raw state: retain reservation. */ })
-      completion = await this.work.wait(ticket)
+      const raw = await this.work.wait(ticket)
+      try { completion = parseWorkerCompletion(raw) } catch { completion = { status: 'failed', certainty: 'uncertain', reason: 'malformed_worker_result' } }
     } catch { completion = { status: 'failed', certainty: 'uncertain', reason: 'worker_port_failed' } }
     if (completion.status === 'refused' || (completion.status === 'cancelled' && completion.certainty === 'terminal')) {
       this.store.put(key, 'rejected'); return skip(completion.reason, key)

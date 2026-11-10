@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
 import { createMonitoringModelRouter, parseMonitoringModelConfiguration, type MonitoringModelHost, type MonitoringBoundModelProfile, type MonitoringModelBackend, type MonitoringModelRequest } from '../sdk/models.ts'
-import { observationEvents, type ObservationFrame } from '../host/frames.ts'
+import { observationEvents, parseObservationFrame, type ObservationFrame } from '../host/frames.ts'
 import { MonitoringCore, type Grants, type JudgeQuestion, type JudgeTask, type Json, type Reference } from './monitoring-core.ts'
 import { RealtimeMonitoringCoordinator, type RealtimeSignal, type RealtimeLease, type RealtimePrepared, type RealtimeDependency, type RealtimeLimits } from './monitoring-core-realtime.ts'
 import { RealtimeMaterialWindow, type RealtimeMaterial, type MaterialWindowOptions } from './monitoring-core-realtime-material.ts'
@@ -299,6 +299,7 @@ export function createRealtimeSelectionPipeline(options: { enabled?: boolean; ma
   const skip = (state: string, frame: ObservationFrame) => state === 'stopped' || state === 'disposed' || (state === 'idle' && frame.sourceEvent !== 'session_start')
   const accept = (frame: ObservationFrame, readProgress?: () => unknown): void => {
     if (!enabled) return
+    try { frame = parseObservationFrame(frame) } catch { window.stop(); coordinator.stop('malformed'); return }
     const ws = window.getStatus().state
     if (!skip(ws, frame)) { try { if (ws === 'idle') window.start({ sessionId: frame.sessionId, binding: frame.binding, afterCursor: frame.cursor - 1 }); window.capture(frame, coordinator.getStatus().step, readProgress) } catch { window.stop() } }
     const cs = coordinator.getStatus().state
