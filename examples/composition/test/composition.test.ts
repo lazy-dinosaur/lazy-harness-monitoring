@@ -60,7 +60,10 @@ test('explicit references active + memory shadow separates enqueue from private 
 })
 test('kill switch overrides opt-ins; ceilings cannot be widened', async () => {
   const c = createComposition({ referencesStage: 'active', memoryStage: 'shadow', killSwitch: true })
-  try { start(c); input(c); message(c); await c.idle(); expect(c.reports).toEqual([]); expect(c.reviews.inspect()).toEqual([]); expect(c.sourceCaptures()).toBe(0) } finally { await c.close() }
+  try { expect(c.registrations.map(r => r.stage)).toEqual(['off', 'off', 'off']); start(c); input(c); message(c); await c.idle(); expect(c.reports).toEqual([]); expect(c.reviews.inspect()).toEqual([]); expect(c.sourceCaptures()).toBe(0) } finally { await c.close() }
+  const off = createComposition({ rulesStage: 'off' })
+  try { expect(off.registrations[1].stage).toBe('off') } finally { await off.close() }
+  for (const rulesStage of ['shadow', 'active'] as const) expect(() => createComposition({ rulesStage })).toThrow('Configuration may only lower the declared run stage')
   expect(() => createComposition({ memoryStage: 'active' })).toThrow('Memory permits')
 })
 test('replacement session fences rather than carrying old composition state', async () => {

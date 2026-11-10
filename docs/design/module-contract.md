@@ -1,9 +1,17 @@
-# Monitoring module contract
+# Monitoring-internal purpose-module contract
 
-Status: authoring contract derived from the three shipped modules and public core APIs
-at `2066a10`. Requirements describe new modules; the checklist records existing exceptions,
-not silent behavior changes. This is not live-use or semantic-quality (P5) approval.
-See the [attachment contract](attachment-contract.md) for composition responsibilities.
+Scope: the monitoring purpose modules under **this repository's `modules/*`**, not the
+common connection contract for module repositories such as monitoring and knowledge.
+This repository is canonical for its internal Host Adapter contract, WorkerExecutionPort
+details and purpose-module shape. Common connection meaning belongs to lazy-harness
+`module-composition.md` §6.6; the [monitoring implementation notes](attachment-contract.md)
+link that canonical SDD and map these APIs to it. Common executable schemas/conformance
+will live in the future separate contract repository, not this document.
+
+Status: internal authoring contract derived from the three shipped purpose modules and
+public core APIs at `2066a10`, updated by the deviation fixes below. Requirements describe
+new monitoring purpose modules; the checklist records compatibility restrictions, not
+silent behavior changes. This is not live-use or semantic-quality (P5) approval.
 
 ## Package and public boundary
 

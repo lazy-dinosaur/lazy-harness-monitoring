@@ -35,6 +35,26 @@ contract for the decision table, hashline terminal-LF limitation and lifecycle f
 The lazy-harness thin consumer remains **deferred by user decision**; this repository
 provides its contracts and offline template, not live integration or production approval.
 
+## Deviation fixes and compatibility
+
+- References explicitly declares `maxStage: 'active'` for context delivery; default remains
+  observe and delivery still needs explicit active opt-in. **BREAKING:** the declaration
+  hash changes; regenerate hash-bound replay/config artifacts (binding version stays `2.1.1`).
+- Rule registration accepts explicit stage options, default observe; only off/observe fit
+  its unchanged observe ceiling. Shadow/active reject. Reusable policy-registry/verifier
+  conformance suites are exported. **BREAKING:** registration is now frozen; replace
+  mutation-based setup with official options.
+- Memory exports `createMemoryHandlers` and accepts an optional `createWorkerPort` factory;
+  every opportunity runtime exclusively owns/disposes its fresh port. This is additive;
+  source freshness, dedupe and private volatile review handoff remain monitor-owned.
+
+Remaining compatibility restrictions and host duties are recorded in the module checklist.
+The attachment document is monitoring implementation notes for the canonical lazy-harness
+`module-composition.md` SDD (§6.6), not a competing common contract. Monitoring-internal
+purpose modules/Host Adapter/worker details remain canonical here. Executable common
+schemas and conformance will live in a future separately pinned contract repository.
+No module-root manifest or non-TypeScript stdio transport is implemented by this batch.
+
 ## Worker and runtime boundary (D1')
 
 No package here depends on Fabric. Core owns `WorkerExecutionPort<Input, Output>`, exported from

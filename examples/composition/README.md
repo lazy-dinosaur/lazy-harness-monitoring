@@ -8,7 +8,7 @@ not its toy authority decisions, into a future host composition. See the
 ## What it composes
 
 `createComposition()` uses all three official registrations: references observe,
-rule-steering fixed observe, memory observe. It completes real public-core preflight
+rule-steering observe (explicit `rulesStage: 'off'` is supported), memory observe. Rules rejects shadow/active at its unchanged observe ceiling. It completes real public-core preflight
 before constructing runtime/workers or installing hooks. References uses the versioned
 read port (required need and updated declaration hash), never legacy ID-only suppression.
 Every external port is in memory: read records, volatile review sink, admitted invented
@@ -48,8 +48,8 @@ Tests prove missing required bindings reject before any factory; full fakes succ
 unsupported capabilities fail; observe has zero worker admissions/reports/source captures/
 private candidates; one explicit active/shadow opt-in separates both routes. They exercise
 reusable read/review/worker conformance and control/session replacement fences.
-`killSwitch: true` sets off where supported; `close()` is the terminal live kill switch
-for all modules, including fixed-observe rules. There is no dynamic reactivation API.
+`killSwitch: true` sets all three registrations off; `close()` is the terminal live kill
+switch for all modules. There is no dynamic reactivation API.
 
 ## Lifecycle and limits
 

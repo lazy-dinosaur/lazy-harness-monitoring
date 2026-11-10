@@ -10,7 +10,7 @@ import { createMemoryMonitor, createMemoryRegistration, memoryBinding, MEMORY_MO
 export const toyCatalog = [{ id: 'toy:prism', version: '1', kind: 'knowledge', text: 'Prisms use amber glass.' }] as const
 export const toyRegistry = { id: 'toy-workshop', version: '1', policies: [{ id: 'glass', version: '1', title: 'Use amber glass.' }] }
 export const toyPolicies = policyReferences(toyRegistry)
-export type CompositionOptions = { referencesStage?: MonitoringRunStage; memoryStage?: MonitoringRunStage; killSwitch?: boolean }
+export type CompositionOptions = { referencesStage?: MonitoringRunStage; rulesStage?: MonitoringRunStage; memoryStage?: MonitoringRunStage; killSwitch?: boolean }
 /** Faux SDK ordered hooks; no private SDK APIs, generated text or external calls. */
 export function createFauxPi() {
   type Handler = (event: any, context: ObservationContext) => unknown
@@ -33,7 +33,7 @@ export function createComposition(options: CompositionOptions = {}) {
     return { protocolVersion: 1, scope: context.scope, sourceRevision: context.sourceRevision, grantRevision: context.grantRevision, cursor: context.completeThroughCursor,
       sourceEventId: t.eventId, documents: t.evidence.filter(e => e.kind === 'knowledge').map(e => ({ documentId: e.id, documentVersion: e.version })), signal }
   } } })
-  const rules = createRuleSteeringRegistration() // Author ceiling observe; never rewrite it.
+  const rules = createRuleSteeringRegistration({ stage: killSwitch ? 'off' : options.rulesStage ?? 'observe' }) // Author ceiling observe; never rewrite it.
   const memory = createMemoryRegistration({ stage: memoryStage, reviewSink: reviews.port })
   const registrations = [references, rules, memory]
   const bindings: MonitoringHostBindings['modules'] = { [REFERENCES_MODULE_ID]: { ...referencesBinding, declaration: references.declaration, declarationHash: references.declarationHash }, [RULE_STEERING_MODULE_ID]: ruleSteeringBinding, [MEMORY_MODULE_ID]: memoryBinding }

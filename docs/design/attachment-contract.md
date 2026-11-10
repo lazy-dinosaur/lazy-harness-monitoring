@@ -1,10 +1,35 @@
-# Monitoring attachment contract
+# Monitoring implementation notes for the lazy-harness module composition contract
 
-Status: composition author contract for public APIs at `2066a10` plus Pi-generic read
-attestation ported here. Not a deployed extension. See the [module contract](module-contract.md)
-and [offline composition](../../examples/composition/README.md).
+This document explains how lazy-harness-monitoring implements the common connection
+contract; it does **not** define that common contract. Its canonical meaning is the
+lazy-harness SDD [module-composition.md](https://github.com/lazy-dinosaur/lazy-harness/blob/main/.lazy-harness/spec/platform/module-composition.md),
+including the scope decision in **§6.6** (user-confirmed 2026-11-09). That SDD revision
+may not be on `origin/main` yet; a temporarily unavailable link does not transfer authority
+to this document. Monitoring-internal Host Adapter and worker details, and the
+[purpose-module contract](module-contract.md) for this repository's `modules/*`, remain
+canonical here. See the [offline composition](../../examples/composition/README.md);
+this is not a deployed extension or a claim of complete common-contract conformance.
 
-## Ownership and startup order
+## Mapping to the canonical SDD and remaining gaps
+
+| SDD concern | Monitoring implementation / status |
+|---|---|
+| Composition-owned assembly (§1–3) | `prepareMonitoringBindings` checks needs, settings, jobs/grants, exact binding versions and capabilities before any factory. Judge/verifier/input ports are injected; missing/failed verification rejects rather than becoming a negative semantic answer. Monitoring-specific preflight details are below. |
+| Agent host code (§2) | `hosts/pi` implements frames, capability declarations, lifecycle generations, report delivery and generic read attestation here. Project capture/catalog/authority remains injected by composition. |
+| Lifecycle and admission safety | Monitoring's generations fence stale scope/source/grants; official stage helpers default observe and honor ceilings/off. Kill switch/disposal stops admission and cancels pending intent. These are monitoring-internal mechanisms supporting the SDD separation, not new common protocol fields. |
+| Result form (§6.3) | `WorkerExecutionPort.wait` returns the common status/certainty `WorkerCompletion` form; `settled` separately acknowledges raw settlement. Uncertain work is not retried and late values cannot replace terminal output. Other native APIs (e.g. read/review receipts and judge decisions) remain distinct; common boundary wrapping/schema alignment is not claimed complete. |
+| Routes and effect ownership | Parent enqueue/hook receipts and private volatile review receipts remain separate monitoring-internal routes. Neither proves actual read, approval or durable storage. Composition owns authorized delivery/UI. |
+| Fabric location (§1–2) | Only lazy-harness `packages/lazy-harness-pi` will implement the Fabric adapter, matching D1′. No Fabric implementation/dependency is supplied here; fake worker and custom-port conformance are monitoring-internal suites. |
+| TypeScript language boundary (§4, §6.2) | Monitoring is imported in-process. JSON-RPC 2.0 stdio applies to `runtime: process`, so a JSON-RPC server is not needed for this TS module repository. |
+| Git submodule pinning (§5) | The intended lazy-harness consumer pins this module repository at an exact git submodule commit. This offline example does not install or update a consuming submodule. |
+| Root declaration (§6.1) — gap | No `lazy-harness.module.json` (`lazy-harness-module/v1`) exists yet. Internal purpose-module declarations do not substitute for that repository-root manifest. Not implemented in this batch. |
+| Integer major versions (§6.4) — gap | Monitoring currently checks exact binding-version strings and protocol-1 input ports. That is not the common manifest/message/port major-version negotiation; alignment awaits the executable contract. |
+| Executable common contract (§6.6) — future | A separate contract repository (working name `lazy-harness-contract`, **not created yet**) will own declaration/RPC/result-format JSON Schemas and the shared TS/Python conformance kit. lazy-harness and every module repository will pin the same commit as a git submodule. No contract submodule or schema is added here. |
+
+The SDD owns meaning; future executable forms must follow it, not redefine it. The
+monitoring suites below verify internal mechanics, not the future common conformance kit.
+
+## Monitoring ownership and attachment sequence
 
 Composition owns module selection, data sources, capabilities, stages, grants, budgets,
 worker implementation, report routes and review UI. Modules never attach/discover
@@ -25,7 +50,10 @@ themselves. Core never imports a host. Pi adapter does not own project identity/
 `attachPiFrames` and low-level runtime alone are trusted mechanics, not preflight.
 Metadata binding does not automatically wire handler callbacks: pass the same bound port
 to documented constructors/request builders. Use `createMemoryMonitor`, not a second
-executor for memory metadata. Shape validation is not conformance or a callback sandbox.
+executor for memory metadata. Its exported `createMemoryHandlers` map and injected
+`createWorkerPort(handlers, limits)` let composition select the implementation while each
+opportunity runtime owns a fresh port's lifecycle; source freshness/dedupe/private handoff
+remain in the monitor. Shape validation is not conformance or a callback sandbox.
 
 ## Required needs, capabilities and host-owned sources
 
@@ -88,10 +116,11 @@ Failed boundaries stay unavailable until explicitly re-established.
 
 Trusted composition chooses explicit stages, default **observe**, using official helpers
 and preflight with validated enums and author ceilings. References permits explicit active;
-memory permits shadow, never active; rule-steering registration/ceiling is observe-only.
+memory permits shadow, never active; rule-steering permits off/observe at its observe ceiling.
 The kill switch stops new admission and fences/cancels pending work, not just hiding
 messages or mutating future config. Use off where supported and/or dispose the current
-composition. Rules has no off argument: universal kill needs admission gating/disposal.
+composition. All three official helpers support off; live kill still needs admission
+gating/disposal and cancellation of pending work.
 Uncertain physical completion stays protected until settlement; off cannot forget effects.
 Observe means no jobs/private candidates/reports/writes/injection. Shadow withholds core
 parent effects/reports; only memory's explicit private volatile review route is allowed.
@@ -105,7 +134,8 @@ output and budgets. `wait` is logical; `settled` is physical/raw. Stop refuses n
 and cancels logical work; restart requires raw idle; dispose is terminal. In-memory
 promise timeout cannot force termination. Run reusable conformance and backend-specific
 raw-termination probes. A Fabric-backed implementation belongs in the **composition
-repository**, exact-pinned with its own runtime/version probe and approval; none is here.
+repository** (`lazy-harness/packages/lazy-harness-pi`), exact-pinned with its own
+runtime/version probe and approval; none is here.
 The template uses in-memory/handler fakes only, with no model/provider call.
 
 Malformed frames, unsupported capability, absent/denied/stale scope/material/grants,
@@ -177,10 +207,11 @@ paths, CaptureEvidence, project evidence-kind wrappers and direct root-bound fil
 capture. Their safety policy is delegated to injected host interfaces, not inferred from
 receipts or replaced with a generic permissive allowlist.
 
-## Deferred lazy-harness handoff: exact later deliverables
+## Deferred lazy-harness handoff: monitoring integration work
 
-Migration step 6 thin consumer is **deferred by user decision**. Later lazy-harness must
-provide all of the following; the offline template supplies none of their real authority:
+Migration step 6 thin consumer is **deferred by user decision**. Under the canonical
+SDD, connecting these monitoring APIs will need the following integration work; this list
+is not a replacement common contract. The offline template supplies no real authority:
 
 - Module/version/config selection, truthful capability preflight, observe-first stages,
   real live kill switch and lifecycle owner.
