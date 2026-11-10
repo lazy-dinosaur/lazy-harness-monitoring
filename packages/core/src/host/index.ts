@@ -1,2 +1,6 @@
 export * from './frames.ts'
 export * from './contract.ts'
+export * from './input-ports.ts'
+export * from './input-port-registry.ts'
+export * from './input-port-fakes.ts'
+export * from './input-port-conformance.ts'

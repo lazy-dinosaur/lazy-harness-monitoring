@@ -26,7 +26,7 @@ describe('references binding and gap-filler purpose', () => {
     expect(referencesQuestionNarrow.instructions).toBe('Should this turn read project evidence now? Judge each current request even if a different idea is postponed. Check whether the visible source bodies can actually support it.')
     expect(referencesQuestionNarrow.criteria.run).toContain('immediate, scoped request')
     for (const q of [referencesQuestion, referencesQuestionNarrow]) for (const text of [q.instructions, ...Object.values(q.criteria)]) expect(text.length).toBeLessThanOrEqual(200)
-    expect(referencesDeclaration.needs).toContainEqual({ id: 'already-read', adapter: 'session.read-records' })
+    expect(referencesDeclaration.needs).toContainEqual({ id: 'already-read', adapter: 'session.read-records', optional: true })
   })
   test('unsupported host events are rejected at startup; supported capabilities resolve', () => {
     const config: MonitoringConfiguration = { contractVersion: 1, source: { kind: 'host-events', scope: 'host-supplied-events' }, goal: 'Toy request', receiver: 'toy', judge: 'scripted', modules: [{ id: REFERENCES_MODULE_ID, version: referencesBinding.version, settings: {} }] }

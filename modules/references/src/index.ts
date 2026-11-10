@@ -1,4 +1,6 @@
 import { configurationFailure, effectiveMonitoringJobs, effectiveMonitoringStage, freezeMonitoringData, parseMonitoringJsonData, validateMonitoringModuleDeclaration, type MonitoringModuleBinding, type MonitoringModuleDeclaration, type MonitoringRunStage } from '@lazy-harness/monitoring-core'
+import { evaluateReadRecordSnapshot, validateReadRecordRequest, validateRequiredInputPorts, type ReadRecordPort, type ReadRecordRequest } from '@lazy-harness/monitoring-core/host'
+import type { Trigger } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 import type { JobHandler, RegisteredModule } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 
 export const REFERENCES_MODULE_ID = 'context.references'
@@ -24,7 +26,7 @@ const grants = freezeMonitoringData({ actions: ['monitoring.selected-material'],
 const validated = validateMonitoringModuleDeclaration({
   purpose: { question: referencesQuestion },
   watch: { events: ['input'], kinds: grants.referenceKinds, history: { turns: 4, granularity: 'message' } },
-  needs: [{ id: 'already-read', adapter: 'session.read-records' }, { id: 'region', adapter: 'region.compact' }],
+  needs: [{ id: 'already-read', adapter: 'session.read-records', optional: true }, { id: 'region', adapter: 'region.compact' }],
   jobs: [{ id: 'deliver', form: 'template', riskTier: 'read-only', report: { supported: ['never', 'always', 'on-result'], default: 'always' }, idempotency: 'per-event', output: 'candidate', grants: { actions: ['monitoring.selected-material'], referenceKinds: ['knowledge'] } }],
 }, grants)
 export const referencesDeclaration = validated.declaration
@@ -38,9 +40,13 @@ export const referencesBinding: MonitoringModuleBinding = Object.freeze({
   },
 })
 /** A caller may tighten the declaration ceiling, never raise it. Delivery requires explicit active opt-in. */
-export type ReferencesRegistrationOptions = Readonly<{ stage?: MonitoringRunStage; maxStage?: MonitoringModuleDeclaration['maxStage'] }>
+export type ReferencesReadRecords = Readonly<{ port: ReadRecordPort; request(trigger: Trigger, signal: AbortSignal): ReadRecordRequest }>
+export type ReferencesRegistrationOptions = Readonly<{ stage?: MonitoringRunStage; maxStage?: MonitoringModuleDeclaration['maxStage']; alreadyRead?: AlreadyRead; readRecords?: ReferencesReadRecords }>
 /** Official runtime registration: never rely on the low-level runtime's omitted-stage default. */
-export function createReferencesRegistration(options: ReferencesRegistrationOptions = {}): RegisteredModule & { readonly stage: MonitoringRunStage } {
+export function createReferencesRegistration(options: ReferencesRegistrationOptions = {}): RegisteredModule & { readonly stage: MonitoringRunStage; readonly handlers: Readonly<Record<string, JobHandler>> } {
+  if (options.readRecords && typeof options.readRecords.request !== 'function') throw Error('Versioned references require a request builder')
+  if (options.alreadyRead && options.readRecords) throw Error('Choose legacy alreadyRead OR versioned readRecords')
+  if (options.readRecords) validateRequiredInputPorts(REFERENCES_MODULE_ID, [{ id: 'already-read', adapter: 'session.read-records' }], { [REFERENCES_MODULE_ID]: { 'already-read': { adapter: 'session.read-records', protocolVersion: 1, port: options.readRecords.port } } })
   const stage = options.stage ?? 'observe'
   if (!['off', 'observe', 'shadow', 'active'].includes(stage)) configurationFailure('STAGE_RAISED', '/stage', 'Unknown references run stage')
   let declaration = referencesDeclaration, declarationHash = validated.hash
@@ -50,20 +56,38 @@ export function createReferencesRegistration(options: ReferencesRegistrationOpti
     const tightened = validateMonitoringModuleDeclaration({ ...referencesDeclaration, maxStage: options.maxStage }, grants)
     declaration = tightened.declaration; declarationHash = tightened.hash
   }
+  if (options.readRecords) {
+    const versioned = validateMonitoringModuleDeclaration({ ...declaration, needs: declaration.needs?.map(n => n.id === 'already-read' ? { ...n, optional: false } : n) }, grants)
+    declaration = versioned.declaration; declarationHash = versioned.hash
+  }
   effectiveMonitoringStage(declaration, stage, '/stage')
-  return Object.freeze({ moduleId: REFERENCES_MODULE_ID, declaration, declarationHash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')!, stage })
+  return Object.freeze({ moduleId: REFERENCES_MODULE_ID, declaration, declarationHash, jobs: effectiveMonitoringJobs(declaration, undefined, '/jobs')!, stage, handlers: createReferencesHandlers(options.readRecords ?? options.alreadyRead) })
 }
 /** Host-owned session.read-records ledger. Host clears it after compaction/session replacement.
  * IDs intentionally preserve legacy semantics: reading one version suppresses all versions until reset.
  * Returning a snapshot prevents handler mutation of host state. No ledger is kept in this package.
  */
 export type AlreadyRead = (trigger: { sessionId: string; eventId: string }) => ReadonlySet<string>
-export function createReferencesHandlers(alreadyRead?: AlreadyRead): Readonly<Record<string, JobHandler>> {
+export function createReferencesHandlers(alreadyRead?: AlreadyRead | ReferencesReadRecords): Readonly<Record<string, JobHandler>> {
   return Object.freeze({
-    [`${REFERENCES_MODULE_ID}.deliver`]: { run: ({ trigger }) => {
+    [`${REFERENCES_MODULE_ID}.deliver`]: { run: async ({ trigger, signal }) => {
       const selected = trigger.evidence.filter(e => e.kind === 'knowledge')
       if (!selected.length) return { status: 'rejected' }
-      const seen = alreadyRead?.(trigger), docs = seen ? selected.filter(d => !seen.has(d.id)) : selected
+      let docs = selected
+      if (alreadyRead && typeof alreadyRead !== 'function') {
+        try {
+          const captured = validateReadRecordRequest(alreadyRead.request(trigger, signal))
+          const request = Object.freeze({ ...captured, signal })
+          if (request.scope.sessionId !== trigger.sessionId || request.sourceEventId !== trigger.eventId || request.documents.length !== selected.length || selected.some(d => !request.documents.some(r => r.documentId === d.id && r.documentVersion === d.version))) return { status: 'rejected', output: { reason: 'read-record-request-mismatch' } }
+          const snapshot = await alreadyRead.port.snapshot({ ...request, signal })
+          const lookup = evaluateReadRecordSnapshot({ ...request, signal }, snapshot)
+          if (signal.aborted || alreadyRead.port.isCurrent(request, snapshot) !== true || lookup.some(r => r.status === 'unknown')) return { status: 'rejected', output: { reason: 'read-records-unknown' } }
+          docs = selected.filter(d => !lookup.some(r => r.documentId === d.id && r.documentVersion === d.version && r.status === 'already-read'))
+        } catch { return { status: 'rejected', output: { reason: 'read-records-unavailable' } } }
+      } else {
+        const seen = alreadyRead?.(trigger)
+        if (seen) docs = selected.filter(d => !seen.has(d.id))
+      }
       if (!docs.length) return { status: 'rejected', output: { deliveredIds: [], droppedAlreadyRead: selected.map(d => d.id) } }
       return { status: 'prepared', output: { deliveredIds: docs.map(d => d.id), droppedAlreadyRead: selected.filter(d => !docs.includes(d)).map(d => d.id) }, report: { text: ['[근거 자료]', ...docs.map(d => `- ${d.id} (v${d.version}): ${d.text}`)].join('\n') } }
     } },
