@@ -12,6 +12,15 @@ test('public binding, declaration, hashes and empty settings; default/ceiling ar
   expect(ruleSteeringBinding.build({}).id).toBe('rules.steer')
   for (const bad of [null, [], { registryPath: 'implicit' }]) expect(() => ruleSteeringBinding.build(bad)).toThrow()
   expect(createRuleSteeringRegistration().stage).toBe('observe')
+  for (const stage of ['off', 'observe'] as const) {
+    const registration = createRuleSteeringRegistration({ stage })
+    expect(registration.stage).toBe(stage)
+    expect(registration.declaration).toBe(ruleSteeringDeclaration)
+    expect(registration.declarationHash).toBe(ruleSteeringBinding.declarationHash!)
+    expect(Object.isFrozen(registration)).toBe(true)
+  }
+  for (const stage of ['shadow', 'active'] as const) expect(() => createRuleSteeringRegistration({ stage })).toThrow('Configuration may only lower the declared run stage')
+  expect(() => createRuleSteeringRegistration({ stage: 'unknown' as 'off' })).toThrow('Unknown rule-steering run stage')
   expect(effectiveMonitoringStage(ruleSteeringDeclaration, undefined, '/stage')).toBe('observe')
   expect(() => effectiveMonitoringStage(ruleSteeringDeclaration, 'active', '/stage')).toThrow()
   const watch = watchModuleFromDeclaration('rules.steer', ruleSteeringDeclaration, ruleSteeringBinding.grants, ruleSteeringBinding.destination)
