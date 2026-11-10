@@ -10,7 +10,7 @@ export function compare(baseline: RunArtifact, candidate: RunArtifact, labels?: 
     trigger: r.trigger,
     selection: { status: r.selection.status, considered: r.selection.considered.map(m => ({ id: m.id, version: m.version, hash: m.content.hash })), selected: r.selection.selected.map(m => ({ id: m.id, version: m.version, hash: m.content.hash, provenance: m.provenance })) },
     judgement: { mode: r.judgement.mode, raw: r.judgement.raw.map(v => v.hash), inputs: r.judgement.inputs.map(v => v.hash) },
-    worker: { dispatched: r.work.dispatched.map(v => v.hash), completion: r.work.completion.map(c => ({ status: c.status, certainty: c.certainty, hash: c.value.hash })), outcomes: r.work.outcomes.map(o => ({ status: o.status, reasonHash: o.reason.hash })), cancellation: r.cancellation },
+    worker: { verification: r.work.verification.map(v => ({ task: v.task.hash, result: v.result.hash })), dispatched: r.work.dispatched.map(v => v.hash), completion: r.work.completion.map(c => ({ status: c.status, certainty: c.certainty, hash: c.value.hash })), outcomes: r.work.outcomes.map(o => ({ status: o.status, reasonHash: o.reason.hash })), cancellation: r.cancellation },
     delivery: r.report,
   })
   const changed = [...new Set([...before.keys(), ...after.keys()])].sort().flatMap(id => {

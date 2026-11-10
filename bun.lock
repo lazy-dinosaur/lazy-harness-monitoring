@@ -44,6 +44,9 @@
     "modules/rule-steering": {
       "name": "@lazy-harness/monitoring-module-rule-steering",
       "version": "0.0.0",
+      "dependencies": {
+        "@lazy-harness/monitoring-core": "workspace:*",
+      },
     },
     "packages/core": {
       "name": "@lazy-harness/monitoring-core",
@@ -58,6 +61,7 @@
       "dependencies": {
         "@lazy-harness/monitoring-core": "workspace:*",
         "@lazy-harness/monitoring-module-references": "workspace:*",
+        "@lazy-harness/monitoring-module-rule-steering": "workspace:*",
       },
     },
   },
