@@ -35,7 +35,7 @@ Real inference is nondeterministic, even with a seed. A separately authorized fu
 
 ## Trace: `monitoring-eval-trace/v1`
 
-`TraceRecord` and `traceRecordJsonSchema` describe one module/frame opportunity. Every non-initial source frame has a record for every configured module, even if unwatched, off, unavailable, skipped, deferred, cancelled or failed. Source frames are unique-ID records; duplicate delivery/interleaving qualification remains in P2, not this serial runner.
+`TraceRecord` and `traceRecordJsonSchema` describe one module/frame opportunity. Every source frame other than session-start bootstrap frames has a record for every configured module, even if unwatched, off, unavailable, skipped, deferred, cancelled or failed. Source frames are unique-ID records; duplicate delivery/interleaving qualification remains in P2, not this serial runner.
 
 | Group | Recorded evidence |
 |---|---|
@@ -112,11 +112,11 @@ bun packages/eval/src/cli.ts score /tmp/p4-holdout.json packages/eval/fixtures/h
 
 `run` accepts optional trailing `--content-consent`; default is no bodies. It fingerprints source and output script, validates the full manifest against both, then emits a canonical JSON run artifact. `score` and `compare` consume those artifacts without invoking any model. To compare a candidate, author one bounded config change (e.g. lower a report mode/stage or edit criteria), freeze it in a new JSON file, run on the **same** source dataset with a distinct run ID, then compare. Source/version/split mismatch fails. Stage fingerprints plus selected ID/versions, judgement mode, worker certainty and receipt kinds explain changes; comparisons never copy bodies, even from consented traces. Script differences are identified explicitly in `stubOutputsHash`. CLI error output intentionally omits arbitrary input/exception text.
 
-To export the JSON schemas without adding dependencies:
+To export the JSON schemas without adding dependencies, resolve the package from its own workspace (the monorepo root does not depend on eval; a root-level bare import probe failed and these commands were corrected):
 
 ```sh
-bun -e 'import {runManifestJsonSchema} from "@lazy-harness/monitoring-eval"; console.log(JSON.stringify(runManifestJsonSchema,null,2))'
-bun -e 'import {traceRecordJsonSchema} from "@lazy-harness/monitoring-eval"; console.log(JSON.stringify(traceRecordJsonSchema,null,2))'
+(cd packages/eval && bun -e 'import {runManifestJsonSchema} from "@lazy-harness/monitoring-eval"; console.log(JSON.stringify(runManifestJsonSchema,null,2))')
+(cd packages/eval && bun -e 'import {traceRecordJsonSchema} from "@lazy-harness/monitoring-eval"; console.log(JSON.stringify(traceRecordJsonSchema,null,2))')
 ```
 
 ## Executed evidence and findings
@@ -128,7 +128,50 @@ bun -e 'import {traceRecordJsonSchema} from "@lazy-harness/monitoring-eval"; con
 - Core's `includeCurrentMaterial` keeps current-frame material even when the stub deselects other references. Deselection is visible in selection diffs but is not automatically a technical failure or proof of semantic usefulness.
 - Pre-dispatch abort produces a terminal refusal, not a started cancellation. Uncertain worker failure remains accounted for without receipt/retry. Replay validates the actual completion category rather than inventing one.
 
-Clean-checkout verification and direct shell CLI probe: **UNVERIFIED pending final receipt**. This line will be replaced only after those commands actually run.
+### Verification receipts
+
+Code/fixture commit tested: `2b8e760` (subsequent receipt update is documentation-only). Both local and fresh detached-worktree runs executed the frozen install, full root suite and all five configs via `bun run typecheck`; every command exited 0. The fresh worktree was removed after verification. The workspace lock change adds only the existing core workspace edge; no external dependency was added.
+
+Local test summary (verbatim):
+
+```text
+ 507 pass
+ 0 fail
+ 2941 expect() calls
+Ran 507 tests across 40 files. [9.51s]
+```
+
+Fresh-checkout install/test summary (verbatim):
+
+```text
+bun install v1.3.14 (0d9b296a)
+
++ @types/bun@1.4.4
++ typescript@7.0.2
+
+256 packages installed [465.00ms]
+ 507 pass
+ 0 fail
+ 2941 expect() calls
+Ran 507 tests across 40 files. [9.63s]
+```
+
+Both typecheck invocations emitted this command and exited 0:
+
+```text
+$ tsc -p packages/core/tsconfig.json && tsc -p hosts/pi/tsconfig.json && tsc -p examples/p1/tsconfig.json && tsc -p hosts/pi/test/tsconfig.json && tsc -p packages/eval/tsconfig.json
+```
+
+Direct CLI run/score/compare commands above were executed (including both splits); their compact receipt was:
+
+```text
+CLI dev repeat: byte-identical (cmp exit 0)
+dev: modules=4; TP=4; FP=0; FN=0; received=4
+holdout: modules=4; TP=4; FP=0; FN=0; received=4
+identical compare: changed=0
+```
+
+These are canned mechanical counts only. A full changed-file scan, including inherited P2 additions relative to P3, found **0 matches** for personal home paths, the local account name, email patterns, credential shapes and the prohibited integration-package name. The first scan's email regex falsely matched workspace lock entries; literal-dot matching corrected it. Exit handling was also corrected to distinguish grep's no-match from an error. No source was altered to hide a true finding. `git diff --check` passed. No push or GitHub write, paid call or real session data was used.
 
 ## Limits / UNVERIFIED
 
