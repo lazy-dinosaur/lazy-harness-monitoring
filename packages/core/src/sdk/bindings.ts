@@ -1,3 +1,4 @@
+import { validateRequiredInputPorts, type HostInputPortBindings, type HostInputPortRegistry } from '../host/input-port-registry.ts'
 import { assertMonitoringWatchable } from './trigger-points.ts'
 import { hostSupportIssues, validateHostCapabilities, type HostCapabilities } from '../host/contract.ts'
 import type { Static, TSchema } from 'typebox'
@@ -26,6 +27,8 @@ export type MonitoringLimitCeilings = Readonly<{ coreLimits?: Partial<Limits>; o
 export type MonitoringHostBindings = Readonly<{
   modules: Readonly<Record<string, MonitoringModuleBinding>>
   judges?: Readonly<Record<string, JudgeBatchPort>>
+  inputPorts?: HostInputPortBindings
+  inputPortRegistry?: HostInputPortRegistry
   allowedSourceScopes: readonly MonitoringConfiguration['source']['scope'][]
   maxModules: number
   capabilities: HostCapabilities
@@ -67,6 +70,7 @@ export function prepareMonitoringBindings(config: MonitoringConfiguration, host:
   try { capabilities = validateHostCapabilities(host.capabilities) } catch { return configurationFailure('HOST_UNSUPPORTED', '/bindings/capabilities', 'Invalid or missing host capabilities') }
   const hostActions = new Set(['inject-context', 'steer', 'block-tool-call'])
   for (const { request, binding, jobs, watch } of entries) {
+    validateRequiredInputPorts(request.id, binding.declaration?.needs, host.inputPorts, host.inputPortRegistry)
     const requirements = binding.declaration ? { events: watch!, actions: jobs!.filter(j => j.enabled).flatMap(j => j.declared.grants.actions) } : binding.hostRequirements
     if (!requirements) configurationFailure('HOST_UNSUPPORTED', '/modules', `Module ${request.id.slice(0, 80)} capability requirements missing`)
     try { assertMonitoringWatchable(requirements.events) } catch (e) { configurationFailure('UNSUPPORTED_EVENT', '/modules', `Module ${request.id.slice(0, 80)}: ${(e as Error).message.slice(0, 200)}`) }

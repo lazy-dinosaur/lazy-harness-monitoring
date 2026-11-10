@@ -33,6 +33,12 @@ test('versioned explicit invented registry preserves scope/exceptions and hashes
 test('unsupported host capabilities fail at startup; supported named triggers resolve', () => {
   const config: MonitoringConfiguration = { contractVersion: 1, source: { kind: 'host-events', scope: 'host-supplied-events' }, goal: 'Toy rules', receiver: 'toy', judge: 'scripted', modules: [{ id: 'rules.steer', version: ruleSteeringBinding.version, settings: {} }] }
   const host = { modules: { 'rules.steer': ruleSteeringBinding }, judges: { scripted: async () => ({}) }, allowedSourceScopes: ['host-supplied-events'] as const, maxModules: 1, internalActions: ['monitoring.rule-reminder'], capabilities: { hostId: 'toy', version: '1', events: ['tool_call', 'message_end'], actions: [] as const, snapshot: 'full' as const } }
+  expect(() => prepareMonitoringBindings(config, host)).toThrow('Module rules.steer need rules (policy.registry)')
+  const fakeRegistry = { policies: [] }
+  Object.assign(host, {
+    inputPortRegistry: { 'policy.registry': { protocolVersion: 1, validate: (port: unknown) => port === fakeRegistry } },
+    inputPorts: { 'rules.steer': { rules: { adapter: 'policy.registry', protocolVersion: 1, port: fakeRegistry } } },
+  })
   expect(prepareMonitoringBindings(config, host).processors[0].spec.id).toBe('rules.steer')
   expect(prepareMonitoringBindings(config, host).processors[0].stage).toBe('observe')
   expect(() => prepareMonitoringBindings(config, { ...host, internalActions: [] })).toThrow('unsupported action')

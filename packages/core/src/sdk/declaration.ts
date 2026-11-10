@@ -39,7 +39,7 @@ export const MonitoringModuleDeclarationSchema = freezeMonitoringData(Type.Objec
     kinds: Type.Array(text(200), { minItems: 1, maxItems: 32 }),
     history: Type.Optional(Type.Object({ turns: Type.Integer({ minimum: 0, maximum: 8 }), granularity: Type.Literal('message') }, strict)),
   }, strict),
-  needs: Type.Optional(Type.Array(Type.Object({ id: symbolic, adapter: symbolic }, strict), { maxItems: 8 })),
+  needs: Type.Optional(Type.Array(Type.Object({ id: symbolic, adapter: symbolic, optional: Type.Optional(Type.Boolean()) }, strict), { maxItems: 8 })),
   jobs: Type.Array(JobSchema, { minItems: 1, maxItems: 16 }),
   acceptance: Type.Optional(Type.Object({ setRef: text(500) }, strict)),
   /** task154: highest run stage the author allows (default active); configuration may only lower it. */
@@ -48,7 +48,7 @@ export const MonitoringModuleDeclarationSchema = freezeMonitoringData(Type.Objec
 export type MonitoringReportMode = typeof MONITORING_REPORT_MODES[number]
 export type MonitoringRiskTier = typeof MONITORING_RISK_TIERS[number]
 export type MonitoringJobDeclaration = Readonly<{ id: string; form: 'template' | 'jev-select' | 'worker' | 'role-chain'; riskTier: MonitoringRiskTier; report: Readonly<{ supported: readonly MonitoringReportMode[]; default: MonitoringReportMode }>; idempotency: 'per-event' | 'per-subject' | 'module-ledger'; output: 'candidate' | 'final'; grants: Grants; cost?: Readonly<{ models: readonly Readonly<{ role: 'judge' | 'worker' | 'embedding' | 'sdk'; profile: string }>[]; caps: Readonly<{ judgeCalls?: number; workerDispatches?: number; sdkCalls?: number; embeddingCalls?: number; usd?: number }> }> }>
-export type MonitoringModuleDeclaration = Readonly<{ purpose: Readonly<{ question: Readonly<{ instructions: string; criteria: Readonly<{ run: string; skip: string; defer: string }>; reference?: Readonly<{ instructions: string; criteria: Readonly<{ true: string; false: string }> }> }> }>; watch: Readonly<{ events: readonly string[]; kinds: readonly string[]; history?: Readonly<{ turns: number; granularity: 'message' }> }>; needs?: readonly Readonly<{ id: string; adapter: string }>[]; jobs: readonly MonitoringJobDeclaration[]; acceptance?: Readonly<{ setRef: string }>; maxStage?: 'observe' | 'shadow' | 'active' }>
+export type MonitoringModuleDeclaration = Readonly<{ purpose: Readonly<{ question: Readonly<{ instructions: string; criteria: Readonly<{ run: string; skip: string; defer: string }>; reference?: Readonly<{ instructions: string; criteria: Readonly<{ true: string; false: string }> }> }> }>; watch: Readonly<{ events: readonly string[]; kinds: readonly string[]; history?: Readonly<{ turns: number; granularity: 'message' }> }>; needs?: readonly Readonly<{ id: string; adapter: string; optional?: boolean }>[]; jobs: readonly MonitoringJobDeclaration[]; acceptance?: Readonly<{ setRef: string }>; maxStage?: 'observe' | 'shadow' | 'active' }>
 export type MonitoringJobOverride = Readonly<{ id: string; enabled?: boolean; report?: MonitoringReportMode; riskTier?: MonitoringRiskTier }>
 export type MonitoringEffectiveJob = Readonly<{ id: string; enabled: boolean; report: MonitoringReportMode; riskTier: MonitoringRiskTier; declared: MonitoringJobDeclaration }>
 
