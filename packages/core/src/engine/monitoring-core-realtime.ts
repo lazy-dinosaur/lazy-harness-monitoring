@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
-import { observationEvents, type ObservationFrame } from '../host/frames.ts'
+import { observationEvents, parseObservationFrame, type ObservationFrame } from '../host/frames.ts'
 import type { Json } from './monitoring-core.ts'
 
 export type RealtimeDependency = Readonly<{ id: string; version: string }>
@@ -86,8 +86,7 @@ export class RealtimeMonitoringCoordinator {
     if (this.state !== 'running') return
     let frame: ObservationFrame
     try {
-      frame = data(input)
-      if (!text(frame.id) || !text(frame.kind) || !knownEvents.has(frame.sourceEvent) || !text(frame.sessionId) || !Number.isSafeInteger(frame.binding) || frame.binding < 1 || !Number.isSafeInteger(frame.cursor) || frame.cursor < 1 || typeof frame.available !== 'boolean' || !frame.snapshot || frame.snapshot.sessionId !== frame.sessionId || typeof frame.snapshot.available !== 'boolean') throw new Error()
+      frame = parseObservationFrame(input)
     } catch { this.stop('malformed'); return }
     if (frame.sessionId !== this.scope!.sessionId || frame.binding !== this.scope!.binding) { this.stop('scope_changed'); return }
     const fingerprint = digest(frame), prior = this.seen.get(frame.id)

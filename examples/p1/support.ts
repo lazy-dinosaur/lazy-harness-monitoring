@@ -111,7 +111,7 @@ export function createScenario(options: ScenarioOptions) {
         }, signal)
         advice = output.advice
       }
-      const output = { notApproved: true, notWritten: true, subjectKey: trigger.subjectKey,
+      const output = { notApproved: true, notWritten: true, ...(trigger.subjectKey !== undefined ? { subjectKey: trigger.subjectKey } : {}),
         evidence: trigger.evidence, ...(advice ? { advice } : {}) }
       outputs.push(output)
       return { status: 'prepared', output, report: { text: JSON.stringify(output) } }
