@@ -93,8 +93,11 @@ runtimes. Implement start/begin/wait/settled/cancel/stop/dispose/idle/status wit
 active/queued/lifetime/timeout limits. Logical timeout/cancel is not hard kill. Retain
 raw reservations until settlement; ignore late output and do not free capacity merely
 because a caller stopped waiting. Provider-backed ports belong in composition.
-Memory currently owns its internal runtime/handler adapter in `createMemoryMonitor`;
-use that path rather than a second generic executor for its registration metadata.
+Memory exports `createMemoryHandlers(input, predecessorCandidateId?)` and accepts
+`createWorkerPort(handlers, limits)` in `createMemoryMonitor`. Composition chooses the
+implementation; each opportunity runtime exclusively owns/disposes its fresh port and
+awaits raw idle. The monitor retains freshness, dedupe and private sink handoff. Do not
+construct a second generic executor for its registration metadata.
 
 ## Idempotency, dedupe and receipts
 
@@ -165,19 +168,25 @@ that every negative case lives in a separate per-module test.
 | Explicit observe registration helper | P: off/shadow/active options | P: explicit off/observe; shadow/active reject at observe ceiling | P: off/observe/shadow |
 | Required external need preflight | D: read optional unless versioned registration | P: custom policy validator H | P: sink required in configured preflight |
 | Version-aware suppression | D: legacy ID-only callback retained | Not a read consumer | Not a read consumer |
-| Standard worker path | P: returned handlers | P: separate handlers/injected verifier | D: monitor-owned internal worker, no exported handler map |
+| Standard worker path | P: returned handlers | P: separate handlers/injected verifier | P: exported handlers + injected per-runtime worker factory |
 | Parent report receipt route | P: active only, sink H | D: declared modes, author ceiling intentionally observe only | P: never; private sink only |
 | Dedupe/lifecycle authority | Per-event P; ledger reset H | Per-turn P; source freshness H | Per-subject P; source/currentness H |
 | Preflight/stage/frame/capability checks | P: module + core | P: module + core | P: module + core |
 | Port conformance | P: read + core worker | P: exported policy-registry/verifier suites + core worker | P: core sink/worker + module safety probes |
 | Byte-identical shared eval | P: eval/test/references.test.ts | P: eval/test/rule-steering.test.ts | P: eval/test/memory.test.ts |
-| README / commentary consistency | P: shipped module ownership + hash compatibility | P: observe default, ceiling-safe stage options + port suites | D: older README assigns all attestation to host repo |
+| README / commentary consistency | P: shipped module ownership + hash compatibility | P: observe default, ceiling-safe stage options + port suites | P: generic Pi attestation vs injected project authority |
 
-Rule-steering's source comment now matches the observe runtime default. Memory's older
-ownership sentence is narrowed here: Pi-generic read-result attestation belongs in
-`hosts/pi`; project capture/catalog/admission stays host-owned. Grouped compatibility
-notes exist in all three READMEs; none provides a published release compatibility matrix.
-This batch does not change module policy just to make the table green.
+Resolved in this batch: explicit references ceiling (active, still opt-in); ceiling-safe
+rule registration/off, reusable registry/verifier conformance and default-stage comment;
+exported memory handlers/injected worker ownership and README authority wording.
+Remaining D rows are intentional compatibility restrictions: references raw input watch,
+optional read need/legacy ID-only suppression, and rule-steering's observe-only author
+ceiling (declared report modes do not authorize activation). Host duties remain explicit.
+Pi-generic read-result attestation belongs in `hosts/pi`; project capture/catalog/admission
+stays host-owned. All three READMEs describe compatibility; no published release matrix
+or live-use/P5 approval is claimed. References' explicit ceiling changes its hash
+(**BREAKING** for hash-bound artifacts); rule registration is now frozen (**BREAKING**
+for mutation-based callers). No module policy is widened just to make the table green.
 
 ## Versioning and compatibility
 

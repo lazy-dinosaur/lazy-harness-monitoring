@@ -1,6 +1,6 @@
-import { canonicalJsonHash, configurationFailure, createHandlerWorkerPort, effectiveMonitoringJobs, effectiveMonitoringStage, freezeMonitoringData, parseMonitoringJsonData, resolveMonitoringWatch, validateMonitoringModuleDeclaration, type MonitoringModuleBinding, type MonitoringRunStage } from '@lazy-harness/monitoring-core'
+import { canonicalJsonHash, configurationFailure, createHandlerWorkerPort, effectiveMonitoringJobs, effectiveMonitoringStage, freezeMonitoringData, parseMonitoringJsonData, resolveMonitoringWatch, validateMonitoringModuleDeclaration, type MonitoringModuleBinding, type MonitoringRunStage, type WorkerExecutionLimits, type WorkerExecutionPort } from '@lazy-harness/monitoring-core'
 import { parseObservationFrame, sameInputPortScope, validateRequiredInputPorts, validateReviewCandidate, validateReviewSinkReceipt, type ObservationFrame, type ReviewCandidate, type ReviewSinkPort, type ReviewSinkReceipt } from '@lazy-harness/monitoring-core/host'
-import { ApprovedBudgetGate, MonitoringModuleRuntime, type JobHandler, type RegisteredModule } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
+import { ApprovedBudgetGate, MonitoringModuleRuntime, type JobHandler, type RegisteredModule, type WorkerJobRequest, type JobResult } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 import { MEMORY_KINDS, parseMemoryInput, type MemoryInput } from './input.ts'
 export { MEMORY_KINDS, parseMemoryInput, type MemoryInput, type MemoryEvidence } from './input.ts'
 
@@ -55,6 +55,20 @@ export function prepareMemoryCandidate(input: MemoryInput, predecessorCandidateI
     preparation: { triggerId: s.frameId, declarationHash: validated.hash, questionHash: canonicalJsonHash(memoryQuestion), configHash: canonicalJsonHash({ stage: 'shadow', templateVersion: 'exact-span/v1' }), snapshotRevision: s.snapshotRevision, stage: 'shadow', templateVersion: 'exact-span/v1' },
   })
 }
+/** Pure handler map over one admitted immutable input. Composition retains freshness/dedupe/sink ownership. */
+export function createMemoryHandlers(input: MemoryInput, predecessorCandidateId?: string): Readonly<Record<string, JobHandler>> {
+  const s = parseMemoryInput(input), candidate = prepareMemoryCandidate(s, predecessorCandidateId)
+  const evidence = s.evidence.map(e => ({ id: e.id, version: e.version, kind: e.kind, text: e.text }))
+  return Object.freeze({ [`${MEMORY_MODULE_ID}.prepare-candidate`]: Object.freeze({
+    run({ trigger, signal }: Parameters<JobHandler['run']>[0]): JobResult {
+      if (signal.aborted || trigger.moduleId !== MEMORY_MODULE_ID || trigger.eventId !== s.frameId || trigger.sessionId !== s.context.scope.sessionId || trigger.subjectKey !== candidate.dedupeKey || canonicalJsonHash(trigger.evidence) !== canonicalJsonHash(evidence)) return { status: 'rejected' }
+      return { status: 'prepared', output: candidate }
+    },
+  }) })
+}
+/** Return a fresh, exclusively runtime-owned port per call; never reuse it across opportunities/runtimes. */
+export type MemoryWorkerPortFactory = (handlers: Readonly<Record<string, JobHandler>>, limits: Readonly<WorkerExecutionLimits>) => WorkerExecutionPort<WorkerJobRequest, JobResult>
+
 export type MemorySource = Readonly<{
   capture(frame: ObservationFrame): unknown
   /** Host re-acquires authority/revisions/grants AND scope. Never inferred from the frame's role. */
@@ -66,7 +80,7 @@ const result = (mode: MemoryResult['mode'], reason: string, prepared = false, re
  * Reservations never evict or retry, including refused/unknown sink receipts. Bodies belong ONLY to the sink.
  * Composition, not the pure worker, performs private handoff after the runtime confirms preparation.
  */
-export function createMemoryMonitor(options: { stage?: MonitoringRunStage; reviewSink?: ReviewSinkPort; source: MemorySource; limits?: Partial<MemoryLimits>; sinkTimeoutMs?: number }) {
+export function createMemoryMonitor(options: { stage?: MonitoringRunStage; reviewSink?: ReviewSinkPort; source: MemorySource; limits?: Partial<MemoryLimits>; sinkTimeoutMs?: number; createWorkerPort?: MemoryWorkerPortFactory }) {
   const registration = createMemoryRegistration(options), limits = { ...MEMORY_LIMITS, ...options.limits }
   for (const k of Object.keys(limits) as (keyof MemoryLimits)[]) if (!Object.hasOwn(MEMORY_LIMITS, k) || !Number.isSafeInteger(limits[k]) || limits[k] < (k === 'maxQueued' ? 0 : 1) || limits[k] > MEMORY_LIMITS[k]) throw Error('Invalid memory bound')
   const sinkTimeoutMs = options.sinkTimeoutMs ?? 2000
@@ -85,6 +99,7 @@ export function createMemoryMonitor(options: { stage?: MonitoringRunStage; revie
     const controller = new AbortController(); active = controller
     const abort = () => controller.abort(); parent?.addEventListener('abort', abort, { once: true })
     let runtime: MonitoringModuleRuntime | undefined
+    let workerPort: WorkerExecutionPort<WorkerJobRequest, JobResult> | undefined
     try {
       const s = parseMemoryInput(options.source.capture(f))
       if (s.frameId !== f.id || s.frameCursor !== f.cursor || s.snapshotRevision !== f.snapshot.revision || s.context.scope.sessionId !== f.sessionId || s.context.scope.bindingGeneration !== f.binding || !f.available || !f.snapshot.available || s.context.completeThroughCursor < f.cursor) return result('defer', 'frame-source-mismatch')
@@ -101,8 +116,10 @@ export function createMemoryMonitor(options: { stage?: MonitoringRunStage; revie
       if (new TextEncoder().encode(candidate.claim.text).length > limits.maxClaimBytes || candidate.evidenceRefs.length > limits.maxEvidence || size > limits.maxCandidateBytes || bodies >= limits.maxBodies || bodyBytes + size > limits.maxBodyBytes || keys.size + evidenceProtection.size + 1 + fresh.length > limits.maxKeys || keyBytes + metadata > limits.maxKeyBytes) return result('defer', 'capacity')
       // Reserve all protections BEFORE dispatch/handoff; pressure and unknown acceptance never reopen them.
       keys.add(key); fresh.forEach(p => evidenceProtection.set(p.key, p.hash)); keyBytes += metadata; bodies++; bodyBytes += size; subjects.set(subject, candidate.candidateId)
-      const handlers: Record<string, JobHandler> = { [`${MEMORY_MODULE_ID}.prepare-candidate`]: { run: async ({ signal }) => signal.aborted ? { status: 'rejected' } : { status: 'prepared', output: candidate } } }
-      runtime = new MonitoringModuleRuntime({ modules: [registration], handlers, workerPort: createHandlerWorkerPort(handlers, { maxActive: 1, maxQueued: 0, maxWork: 1 }), budget: new ApprovedBudgetGate(), maxOutcomes: 1 })
+      const handlers = createMemoryHandlers(s, previous)
+      const workerLimits = Object.freeze({ maxActive: 1, maxQueued: 0, maxWork: 1, timeoutMs: 30000 })
+      workerPort = (options.createWorkerPort ?? createHandlerWorkerPort)(handlers, workerLimits)
+      runtime = new MonitoringModuleRuntime({ modules: [registration], handlers, workerPort, budget: new ApprovedBudgetGate(), maxOutcomes: 1, maxActive: 1, maxQueued: 0, maxWork: 1 })
       const outcomes = await runtime.onTrigger({ moduleId: MEMORY_MODULE_ID, eventId: f.id, sessionId: f.sessionId, subjectKey: key, evidence: s.evidence.map(e => ({ id: e.id, version: e.version, kind: e.kind, text: e.text })) }, controller.signal)
       if (!outcomes.some(o => o.status === 'prepared') || !current(s, f, epoch, controller.signal)) return result('defer', 'completion-stale')
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -116,7 +133,12 @@ export function createMemoryMonitor(options: { stage?: MonitoringRunStage; revie
       if (!current(s, f, epoch, controller.signal)) return result('defer', 'receipt-stale-or-unknown', true)
       return result('run', `sink:${receipt.status}`, true, receipt)
     } catch { return result('defer', 'evidence-unavailable-or-invalid') }
-    finally { runtime?.dispose(); if (runtime) await runtime.idle(); parent?.removeEventListener('abort', abort); active = undefined }
+    finally {
+      try {
+        if (runtime) { runtime.dispose(); await runtime.idle() }
+        else if (workerPort) { workerPort.dispose(); await workerPort.idle() }
+      } finally { parent?.removeEventListener('abort', abort); active = undefined }
+    }
   }
   function close() {
     closed = true; generation++; active?.abort()

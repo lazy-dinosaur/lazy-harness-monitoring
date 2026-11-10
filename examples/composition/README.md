@@ -20,8 +20,11 @@ documents and run decisions are hand-scripted, not inferred from text or labels.
 
 `createFauxPi` runs ordered public-shaped hooks. Generations install first, observer next,
 `attachPiFrames` last. Actual Pi observer snapshots reach the composition target. Hooks
-return undefined; report collection is not delivery or parent injection. Memory owns its
-own handler/runtime; the other runtime owns its worker (never shared).
+return undefined; report collection is not delivery or parent injection. Composition injects
+memory's worker factory over the exported `createMemoryHandlers` map. Each opportunity
+runtime owns/disposes a fresh bounded port and awaits raw idle; the monitor retains source
+freshness, dedupe and private review handoff. The other runtime owns a separate worker
+(never shared). Existing callers may omit the factory to retain the core handler adapter.
 
 ## Run and opt in
 

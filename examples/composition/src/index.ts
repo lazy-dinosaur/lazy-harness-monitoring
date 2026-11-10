@@ -60,7 +60,9 @@ export function createComposition(options: CompositionOptions = {}) {
     if (closed || !context?.available || r.sessionId !== context.scope.sessionId) return { reportId, status: 'failed' }
     reports.push(r); return { reportId, status: 'enqueued' } // Fake enqueue ONLY; never an actual read.
   } })
-  const monitor = createMemoryMonitor({ stage: memoryStage, reviewSink: reviews.port, source: {
+  const monitor = createMemoryMonitor({ stage: memoryStage, reviewSink: reviews.port,
+    // Composition chooses the implementation; each memory runtime owns a fresh port.
+    createWorkerPort: (handlers, limits) => createHandlerWorkerPort(handlers, limits), source: {
     capture(frame): MemoryInput {
       sourceCaptures++
       if (!context) throw Error('No live input scope')
