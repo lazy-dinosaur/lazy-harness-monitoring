@@ -1,6 +1,7 @@
 import { canonicalJson, canonicalJsonHash, createInMemoryWorkerPort, effectiveMonitoringJobs, effectiveMonitoringStage, resolveMonitoringWatch, type MonitoringModelBackend, type MonitoringModelRequest, type WorkerCompletion, type WorkerExecutionPort, type WorkerJobRequest } from '@lazy-harness/monitoring-core'
 import { createRealtimeSelectionPipeline, type RealtimeSelectionPacket } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
 import { ApprovedBudgetGate, MonitoringModuleRuntime, monitoringReportId, watchModuleFromDeclaration, type JobResult, type ReportDeliveryReceipt, type ReportEnqueueReceipt } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
+import { referencesHandlers, REFERENCES_MODULE_ID } from '@lazy-harness/monitoring-module-references'
 import { redactSecrets } from '@lazy-harness/monitoring-core/engine/monitoring-core-redaction.ts'
 import { createManifest, parseDataset, parseManifest, parseModules, type EvalModule, type ReplayDataset, type RunManifest, type StubOutput } from './contracts.ts'
 
@@ -74,9 +75,10 @@ export async function replay(manifestInput: RunManifest, datasetInput: ReplayDat
     }
     const job = m.declaration.jobs[0], budget = new ApprovedBudgetGate()
     if (job.cost) budget.approve({ moduleId: m.id, caps: Object.fromEntries(Object.entries(job.cost.caps).map(([k, v]) => [k, v! * dataset.frames.length])), approvedBy: 'synthetic-fixture' })
-    const memory = createInMemoryWorkerPort<WorkerJobRequest, JobResult>(request => {
+    const memory = createInMemoryWorkerPort<WorkerJobRequest, JobResult>((request, signal) => {
       if (script?.worker === 'failed') throw new Error('synthetic worker failure')
       for (const [kind, amount] of Object.entries(job.cost?.caps ?? {})) request.context.lease?.consume(kind as keyof NonNullable<typeof job.cost>['caps'], amount!)
+      if (m.id === REFERENCES_MODULE_ID) return referencesHandlers[request.handlerId].run({ ...request.context, signal })
       return { status: 'prepared', output: { evidenceIds: request.context.trigger.evidence.map(e => e.id), notApproved: true, notWritten: true }, report: { text: 'Synthetic review candidate; no action performed.' } }
     }, { maxActive: 1, maxQueued: 1, maxWork: 512, timeoutMs: m.knobs.timeoutMs })
     const workerPort: WorkerExecutionPort<WorkerJobRequest, JobResult> = { ...memory,
