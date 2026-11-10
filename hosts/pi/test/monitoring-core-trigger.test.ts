@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
-import { SyntheticTriggerRegistry, type TestTriggerHandler, type TriggerInvocation, type TriggerResult } from '../src/engine/monitoring-core-trigger.ts'
-import { MonitoringObservationBridge, materialContentHash, type MaterialEnvelope, type ObservationLease } from '../src/engine/monitoring-core-observation.ts'
-import { createAuditObserver, createContextReferences, createKnowledgeCandidate } from '../../.lazy-harness/scripts/monitoring-core-examples.ts'
-import { PiMonitoringObserver } from '../src/observer/monitoring-observer.ts'
-import { clone, createSdkFixture, deferred, sdkEntry } from '../../packages/lazy-harness-pi/tests/support/monitoring-sdk-fixture.ts'
+import { SyntheticTriggerRegistry, type TestTriggerHandler, type TriggerInvocation, type TriggerResult } from '@lazy-harness/monitoring-core/engine/monitoring-core-trigger.ts'
+import { MonitoringObservationBridge, materialContentHash, type MaterialEnvelope, type ObservationLease } from '@lazy-harness/monitoring-core/engine/monitoring-core-observation.ts'
+import { createAuditObserver, createContextReferences, createKnowledgeCandidate } from './support/pending-fixtures.ts'
+import { PiMonitoringObserver } from '../src/index.ts'
+import { clone, sdkFixture as createSdkFixture } from './support/pending-fixtures.ts'
+import { deferred } from './support/real-sdk.ts'
+const sdkEntry = import.meta.resolve('@earendil-works/pi-coding-agent')
 
 const hash = (x: unknown) => createHash('sha256').update(JSON.stringify(x)).digest('hex')
 const tick = () => new Promise<void>(r => setTimeout(r, 0))
@@ -81,7 +83,7 @@ describe('P4 mechanical execution target guards (not actual-SDK proof)', () => {
   })
 })
 
-const actual = sdkEntry ? describe : describe.skip
+const actual = describe
 const proofs: any[] = []
 let fetchAttempts = 0
 actual('P4 ACTUAL SDK source→selection→target→controlled effect→execution receipt', () => {
@@ -111,7 +113,7 @@ actual('P4 ACTUAL SDK source→selection→target→controlled effect→executio
     const ref = { id: 'controlled-reference', kind: 'knowledge', version: 'controlled-v3', content: 'P4_EXACT_SELECTED_BODY' }
     const bridge = new MonitoringObservationBridge({ enabled: true, goal: 'P4 controlled in-memory effect proof', references: [ref, { id: 'excluded-reference', kind: 'restricted', version: 'secret-v1', content: 'P4_EXCLUDED_BODY' }], processors: processors.map(spec => ({ spec, grants: { referenceKinds: spec.referenceKinds, actions: spec.allowedActions }, destination: `synthetic:${spec.id}` })), receiver: (m, lease) => { handoffs.push(clone(m)); return registry.receive(m, lease) }, judgeBatch: async tasks => Object.fromEntries(tasks.map(t => [t.processorId, { mode: options.mode ?? 'run', reason: 'Scripted P4 transport/effect test only', evidenceRefs: [t.view.eventRef, ...t.view.context.references.map(r => r.id)] }])), coreLimits: { maxConcurrent: 2, timeoutMs: options.coreTimeoutMs ?? 3000 } })
     const observer: PiMonitoringObserver = new PiMonitoringObserver((frame, lease) => bridge.consume(frame, observer.frames, lease), { workerTimeoutMs: 5000 })
-    const f = await createSdkFixture({ observer, persistentLifecycle: options.persistentLifecycle })
+    const f = await createSdkFixture({ observer })
     return { f, bridge, registry, handoffs, effects, ref, async dispose() { await f.dispose(); bridge.dispose(); registry.dispose() } }
   }
   function reconcile(x: Awaited<ReturnType<typeof fixture>>) {
@@ -188,7 +190,7 @@ actual('P4 ACTUAL SDK source→selection→target→controlled effect→executio
       x.f.setSteps([x.f.ai.fauxAssistantMessage('old-scope-answer')]); await x.f.session.prompt('old-scope-input ' + 'padding '.repeat(80)); await entered.promise
       const oldCursor = x.bridge.getStatus().scannedCursor
       if (transition === 'session') await x.f.runtime.newSession()
-      else if (transition === 'tree') { const user = x.f.session.sessionManager.getBranch().find((e: any) => e.type === 'message' && e.message.role === 'user'); await x.f.session.navigateTree(user.id, { summarize: false }) }
+      else if (transition === 'tree') { const user = x.f.session.sessionManager.getBranch().find((e: any) => e.type === 'message' && e.message.role === 'user'); expect(user).toBeDefined(); await x.f.session.navigateTree(user!.id, { summarize: false }) }
       else { x.f.setSteps([x.f.ai.fauxAssistantMessage('P4_COMPACTION')]); await x.f.session.compact() }
       release.resolve(); await x.f.observer.idle(); expect(x.effects.size).toBe(baselineEffects.size)
       block = false

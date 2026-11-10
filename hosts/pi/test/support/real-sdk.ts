@@ -21,7 +21,7 @@ export function deferred<T = void>() {
 export type HookSample = { event: string; ms: number }
 export async function realSdk(options: {
   enabled?: boolean; observer?: PiMonitoringObserver; limits?: Partial<ObservationLimits>; benchmarkDisabled?: boolean
-  extensions?: ExtensionFactory[]; toolThrows?: boolean
+  extensions?: ExtensionFactory[]; toolThrows?: boolean; toolDelay?: Promise<void>
   uiSelect?: ExtensionUIContext['select']; warming?: boolean
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'monitoring-p3-sdk-'))
@@ -72,6 +72,7 @@ export async function realSdk(options: {
         description: 'In-memory qualification tool', parameters: { type: 'object', properties: { value: { type: 'number' } }, required: ['value'] } as any,
         async execute(_id, params: any, _signal, onUpdate) {
           onUpdate?.({ content: [{ type: 'text', text: 'synthetic-progress' }], details: {} })
+          await options.toolDelay
           if (options.toolThrows) throw new Error('synthetic-tool-error')
           return { content: [{ type: 'text', text: `synthetic-result:${params.value}` }], details: {} }
         } }] })

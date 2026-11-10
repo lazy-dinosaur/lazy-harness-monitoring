@@ -2,7 +2,7 @@
 
 ## Decision and scope
 
-**Partial qualification; complete P3 exit is still NOT claimed.** Approved F1–F4 fixes now guard late-worker scope and selected-source freshness in the explicit handoff composition, label hook-boundary receipts, and declare only real-SDK-proven events. Five legacy pending files remain excluded. This is Pi SDK 1.5.0 faux-provider qualification, not live-use acceptance or a shipped turnkey scheduler. See **Implemented fixes** for commits, tests, API compatibility and resolver obligations.
+**Partial qualification; complete P3 exit is still NOT claimed.** Approved F1–F4 fixes now guard late-worker scope and selected-source freshness in the explicit handoff composition, label hook-boundary receipts, and declare only real-SDK-proven events. The five remaining legacy pending files are now migrated; the root test exclusion is removed. This closes pending-protection migration, not the other P3 exit limitations. This is Pi SDK 1.5.0 faux-provider qualification, not live-use acceptance or a shipped turnkey scheduler. See **Implemented fixes** for commits, tests, API compatibility and resolver obligations.
 
 - Starting revision: `50b3263` (`qualification/p1`); working branch: `qualification/p3`.
 - SDK: `@earendil-works/pi-coding-agent` **1.5.0**, exact `hosts/pi` devDependency, also `*` peerDependency. No other manifest dependency changes.
@@ -23,7 +23,7 @@ bunx tsc -p hosts/pi/test/tsconfig.json
 bun hosts/pi/test/hooks-overhead.ts
 ```
 
-`bun run test` uses the existing root script: all `packages/core/test` and `hosts/pi/test`, excluding `**/pending-from-core/**`. The root script is unchanged because it already discovers the moved coverage. The standalone overhead program is not a test and has no timing pass threshold. The new test tsconfig checks new P3 files, not the pre-existing Pi test (which was not previously included in host tsc).
+`bun run test` now discovers core, Pi, eval and all three module suites without a pending-path exclusion. `bun run typecheck` runs the eight configured compiler projects, including all restored `monitoring-core*.test.ts` suites and test support in the Pi test project. The standalone overhead program remains a separate, non-threshold benchmark. Earlier receipts below are historical; the pending-migration verification is recorded separately.
 
 ## Fixture and execution trace
 
@@ -65,16 +65,18 @@ The positive trace is:
 
 ## Pending-test dispositions
 
-All six original files were read in full. None is retired on age, filename, or import shape. Classification is **replace** for every file: preserve meaningful protections using current public composition; do not blindly transplant private fixture imports. Only the fully covered observer file is removed. The other five remain in `hosts/pi/test/pending-from-core/`; exclusions stay in place. Thus classification is complete, migration is not.
+All six original files have now been dispositioned. The observer replacement remains documented below. The five remaining files have been migrated into active `hosts/pi/test/monitoring-core*.test.ts` suites: **137 executable tests** against public engine exports and the mandatory real SDK 1.5.0 faux fixture. The complete [protection → disposition → test ledger](pending-pi-protection-migration.md) enumerates all **112 original test-title groups**, including every parameterized variant, narrow v1 API/private-example retirements and their cited current tests. No protection is retired merely because its import moved.
 
-| Original file | Disposition and protection → active replacement | Remaining protection / why file remains |
+| Original pending file | Disposition → active test | Previously uncovered protections now exercised |
 |---|---|---|
-| `monitoring-observer.test.ts` (227 lines) | Replace, complete; removed. Detailed mapping below. | None of its protection groups intentionally retired. |
-| `monitoring-core-observation.test.ts` (277 lines) | Replace, partial. Exact admitted source → full-path pipeline test; late selection/scope changes → four transition tests; tool errors/steer/unavailable/tail/abort → real SDK tests. | Legacy settled-bridge source-count/input/reference/material-byte limits, malformed/identity-conflicting receiver acknowledgements, duplicate settlement, gaps/order, per-module failure isolation, lifetime budgets, receiver physical timeout/cancellation accounting still need explicit equivalent coverage before removal. |
-| `monitoring-core-realtime-selection.test.ts` (278 lines) | Replace, partial. Native tools, skip/defer, exact selected input, source identities, input supersession and context crossing → SDK pipeline/input/tool tests. | Multi-module grant/view isolation, profiles/routes, denied-field accessor reads, explicit argument admission, provisional source versions, missing-current selection, malformed classifier results, source-window limits, nested raw timeout accounting, and cleanup permutations not fully replaced here. |
-| `monitoring-core-realtime.test.ts` (249 lines) | Replace, partial. Async readiness across context steps, late selection invalidation, SDK steer/tool/settlement/abort → active SDK tests. | Full queue/coalescing/overflow, raw-slot retention, lifetime bounds, malformed/accessor frames, dependency/permission rechecks, model-change invalidation, no-next-context and every stop/unsubscribe permutation still need replacement. |
-| `monitoring-core-trigger.test.ts` (221 lines) | Replace, partial. Explicit stub worker port, no dispatch on skip/defer, report identity, stale session handling → pipeline/late-worker tests; reusable port conformance already runs in core suite. | Legacy execution-registry route/grant/body/effect receipts, reentrant replay, unregister replacement, uncertain effects, raw handler deadline and all concurrency/retention permutations not fully replaced. No business-effect equivalence is claimed. |
-| `monitoring-core.test.ts` (199 lines) | Replace, deferred. Current v2 source/selection/runtime tests and P1 scenarios remain enabled, but are not asserted to replace every old direct-core assertion. | Explicit-start grants, duplicate/conflicting/out-of-order events, judge evidence, isolated handler errors, physical slots, stale contexts, sink acknowledgements, all budgets/immutable payload/reference integrity and private reference-example fixture coverage need a dedicated public-API replacement. Private example paths being absent does not make their protections obsolete. |
+| `monitoring-core-observation.test.ts` (277 lines) | Restore at `hosts/pi/test/monitoring-core-observation.test.ts` | Source-count/frame/reference/material-byte limits; all malformed receiver receipt variants; duplicate/conflicting settlements; gaps/order; isolation; lifetime and raw receiver cancellation/timeout accounting; real SDK scope, abort, tail and ring-overflow cases |
+| `monitoring-core-realtime-selection.test.ts` (278 lines) | Restore; replace removed Pi material tap with explicit `attachPiFrames` | Module grant/view isolation, profiles/routes, denied accessor reads, explicit argument admission, provisional/final versions, missing-current selection, malformed classifier results, source-window limits, nested raw timeout accounting, cleanup and four real SDK paths |
+| `monitoring-core-realtime.test.ts` (249 lines) | Restore; replace removed realtime tap with explicit `attachPiFrames` | Queue coalescing/overflow, raw slots, all lifetime/retention bounds, malformed/accessor frames, dependency/permission rechecks, model/thinking invalidation, no-next-context and stop/detach ownership; four real SDK paths |
+| `monitoring-core-trigger.test.ts` (221 lines) | Restore public synthetic registry; not a business executor | Route/grant/body/source/effect receipts; reentrant replay; replacement disposer; uncertain effects; raw handler deadline; concurrency/retention and real SDK controlled-memory-effect cases |
+| `monitoring-core.test.ts` (199 lines) | Restore direct public engine guards; replace/retire two private example tests as detailed in ledger | Explicit start/grants; conflicting/ordered events; judgement evidence; isolated errors; physical slots; stale contexts; sink identities; immutable JSON, reference integrity and lifetime/read/queue budgets. Current P1 scenarios replace private fixture spellings; missing answers stay technical uncertainty in current selection |
+
+The pending directory is empty and removed; root `test` no longer has a pending-path ignore, and `hosts/pi/test/tsconfig.json` explicitly includes all five restored suites. No runtime source change or new dependency was needed. No new current defect / `FINDING:` was exposed by this batch. Removed tap-wrapper double-registration/error-propagation behavior and private-example output spellings are explicitly retired, not silently weakened. Other P3 limitations remain open.
+
 
 ### Complete observer replacement map
 
@@ -100,6 +102,8 @@ All six original files were read in full. None is retired on age, filename, or i
 ## Supported-capability / version matrix
 
 Scope: **Pi SDK 1.5.0 only; observation support**, not semantic usefulness or actionable interception. `V` below means the event was emitted by the real SDK and observed as a conformant, notification-only frame in the named test. The common negative evidence for **every** qualified event is `real-sdk-capabilities.test.ts`: `negative event inventory: disabled observer registers none of the entire declared vocabulary` and `negative attach order...` (unit controls, explicitly not a second real host). Normal-run negatives also include the actual SDK `handled input causes no provider request or run hooks` test. No untested event is promoted merely because it appears in `observationEvents`.
+
+Additional pending-migration evidence (no capability declaration changes): `monitoring-core-realtime-selection.test.ts` proves admitted native progress while a real SDK tool is gated, assistant final material, tool-result context crossing and native steer; `monitoring-core-realtime.test.ts` proves pre-settlement dispatch, context handoff without injection and steer invalidation. `monitoring-core-observation.test.ts` / `monitoring-core-trigger.test.ts` add settled-source and controlled-memory-target boundary coverage. These strengthen the existing tool/input/context/settlement rows only; they do not promote unproven hooks, effects or host versions.
 
 Evidence keys:
 - **I**: `real-sdk-capabilities.test.ts`, `SDK capability inventory: every qualified run event...` (asserts each listed event).
@@ -444,7 +448,7 @@ All commands exited zero. No lockfile changes were needed by the frozen install.
 
 ## Remaining UNVERIFIED / unsupported
 
-- Five retained pending files' complete protection migration; no all-pending-restored claim.
+- Pending-protection migration is complete as described above; this does not close the remaining limitations below.
 - Unconditional freshness for unscoped async callers or arbitrary material kinds: async callers must capture origin/dependencies before dispatch and use a live native-source resolver. The tested composition binds unique canonical user-text entries; it fails closed for ambiguous bindings. No generic native-source mapper or turnkey runtime is shipped.
 - TUI/RPC `user_bash` and real provider serialization remain UNVERIFIED and undeclared. Physical TUI UI, non-cancellation compaction failures and real provider cache economics remain UNVERIFIED. Selector and synthetic-faux cache-scheduler lifecycle are now proven.
 - Complete synchronous attach/report/core overhead, N-repeated lifecycle overhead, async-only latency, memory and semantic/cost acceptance.

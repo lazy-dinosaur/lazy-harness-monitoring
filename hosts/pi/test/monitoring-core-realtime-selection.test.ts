@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { RealtimeMaterialWindow, createPiMaterialTap } from '../src/engine/monitoring-core-realtime-material.ts'
-import { RealtimeSelectionBridge, createRealtimeSelectionPipeline, type RealtimeWatchModule } from '../src/engine/monitoring-core-realtime-selection.ts'
-import { PiMonitoringObserver, observationEvents, type ObservationFrame, type ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
-import { config, profile, fixture, outputFor } from './support/model-fixture.ts'
-import { createSdkFixture, deferred, sdkEntry } from '../../packages/lazy-harness-pi/tests/support/monitoring-sdk-fixture.ts'
+import { attachPiFrames } from '../src/index.ts'
+import { RealtimeSelectionBridge, createRealtimeSelectionPipeline, type RealtimeWatchModule } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime-selection.ts'
+import { PiMonitoringObserver, observationEvents, type ObservationFrame, type ObservationSnapshot } from '../src/index.ts'
+import { config, profile, fixture, outputFor } from '../../../packages/core/test/support/model-fixture.ts'
+import { sdkFixture as createSdkFixture } from './support/pending-fixtures.ts'
+import { deferred } from './support/real-sdk.ts'
+const sdkEntry = import.meta.resolve('@earendil-works/pi-coding-agent')
 
 const module = (id = 'watch.alpha', kinds = ['tool-result', 'policy'], events = ['tool_result']): RealtimeWatchModule => ({ id, watchEvents: events, referenceKinds: kinds, grants: { referenceKinds: kinds, actions: ['monitoring.selected-material'] }, question: { instructions: 'Synthetic scoped source selection, not a real semantic benchmark', criteria: { run: 'Needs current admitted material', skip: 'No requested work', defer: 'Unresolved meaning' } }, destination: `sink:${id}` })
 const refs = [{ id: 'policy.allowed', kind: 'policy', version: 'p1', content: 'ALLOWED_POLICY' }, { id: 'policy.unselected', kind: 'policy', version: 'p2', content: 'UNSELECTED_POLICY' }, { id: 'private.ref', kind: 'restricted', version: 'p3', content: 'PRIVATE_REFERENCE' }]
@@ -16,7 +18,7 @@ function setup(options: { modules?: readonly RealtimeWatchModule[]; material?: a
   ;(f.host.backends as any).native = { ...f.host.backends.native, invoke: (request: any, context: any) => { f.calls.push({ request, context }); return options.response ? options.response(request, context) : outputFor(request) } }
   const modules = options.modules ?? [module()]
   for (const m of modules) permitted.set(m.id, true)
-  const pipeline = createRealtimeSelectionPipeline({ enabled: true, observer, material: { allowedKinds: allKinds, toolFields: { synthetic: ['value'] }, references: refs, ...options.material }, selection: { modules, goal: 'Controlled source/material proof', modelConfig: options.modelConfig ?? config(), modelHost: f.host, isPermitted: id => permitted.get(id) === true, limits: options.selectionLimits }, realtimeLimits: { jobTimeoutMs: 10000, ...options.realtimeLimits } })
+  const pipeline = createRealtimeSelectionPipeline({ enabled: true, material: { allowedKinds: allKinds, toolFields: { synthetic: ['value'] }, references: refs, ...options.material }, selection: { modules, goal: 'Controlled source/material proof', modelConfig: options.modelConfig ?? config(), modelHost: f.host, isPermitted: id => permitted.get(id) === true, limits: options.selectionLimits }, realtimeLimits: { jobTimeoutMs: 10000, ...options.realtimeLimits } })
   pipeline.window.start({ sessionId: 'mechanical-session', binding: 1 }); pipeline.coordinator.start({ sessionId: 'mechanical-session', binding: 1 })
   let cursor = 0
   const frame = (event: string, payload: any = {}, patch: Partial<ObservationFrame> = {}): ObservationFrame => {
@@ -36,9 +38,9 @@ const choose = (request: any, selected: (task: any, ref: any) => boolean, modes:
 describe('B material and scoped selection mechanical qualification', () => {
   test('default-off composition does not install hooks or invoke models', () => {
     const f = fixture(), observer = new PiMonitoringObserver(() => undefined)
-    const p = createRealtimeSelectionPipeline({ observer, material: { allowedKinds: ['tool-result'] }, selection: { modules: [module('watch.alpha', ['tool-result'])], modelConfig: config(), modelHost: f.host, goal: 'Synthetic', isPermitted: () => true } })
-    let registrations = 0; p.extension({ on() { registrations++; return () => undefined } })
-    expect(registrations).toBe(0); expect(f.calls).toHaveLength(0); expect(p.coordinator.getStatus().state).toBe('idle'); p.dispose()
+    const p = createRealtimeSelectionPipeline({ material: { allowedKinds: ['tool-result'] }, selection: { modules: [module('watch.alpha', ['tool-result'])], modelConfig: config(), modelHost: f.host, goal: 'Synthetic', isPermitted: () => true } })
+    // Host-neutral composition has no hook registration method; explicit host attachment is separate.
+    expect('extension' in p).toBe(false); expect(f.calls).toHaveLength(0); expect(p.coordinator.getStatus().state).toBe('idle'); p.dispose()
   })
   test('same-frame material namespaces keep raw user/assistant text independent of event-meta', async () => {
     const f = setup({ modules: [module('watch.input', ['user-text', 'event-meta'], ['input'])], material: { references: [] } })
@@ -141,9 +143,9 @@ describe('B material and scoped selection mechanical qualification', () => {
     const f = setup({ response: request => outputFor(request, mode) })
     try { f.feed('tool_result', result()); await f.pipeline.idle(); expect(packets(f)).toHaveLength(0); expect(f.pipeline.selection.traces.some(t => t.mode === mode)).toBe(true) } finally { f.pipeline.dispose(); await f.pipeline.idle() }
   })
-  test('malformed native replies are technical/deferred without a fabricated semantic decision', async () => {
+  test('classifier state excludes oracle labels; missing native answers are technical uncertainty', async () => {
     const f = setup({ response: () => ({ value: { stopReason: 'stop', answers: {} } }) })
-    try { f.feed('tool_result', result()); await f.pipeline.idle(); expect(packets(f)).toHaveLength(0); expect(f.pipeline.selection.getStatus().models.failureCount).toBeGreaterThan(0); expect(f.pipeline.selection.traces.some(t => t.status === 'deferred' && t.mode === undefined)).toBe(true) } finally { f.pipeline.dispose(); await f.pipeline.idle() }
+    try { f.feed('tool_result', result()); await f.pipeline.idle(); expect(packets(f)).toHaveLength(0); expect(JSON.stringify(f.calls.map(call => (call.request.body as any).state))).not.toContain('expected'); expect(f.pipeline.selection.getStatus().models.failureCount).toBeGreaterThan(0); expect(f.pipeline.selection.traces.some(t => t.status === 'deferred' && t.mode === undefined)).toBe(true) } finally { f.pipeline.dispose(); await f.pipeline.idle() }
   })
   test('run with no selected current reference cannot produce a usable packet', async () => {
     const f = setup({ response: request => choose(request, (_task, ref) => ref.kind === 'policy') })
@@ -196,36 +198,34 @@ describe('B material and scoped selection mechanical qualification', () => {
       release.resolve(); await f.pipeline.idle(); expect(packets(f)).toHaveLength(0); expect(f.pipeline.coordinator.getStatus().active).toBe(0)
     } finally { release.resolve(); f.pipeline.dispose(); await f.pipeline.idle() }
   })
-  test('source-window scope/control and tap order are explicit and bounded', () => {
+  test('source-window scope/control and explicit attachment are bounded', () => {
     const f = setup({ material: { references: [], limits: { maxFrames: 1, maxTrace: 1 } } })
     try {
       f.feed('context'); const old = f.feed('message_end', { message: { role: 'assistant', content: 'material' } }); f.feed('context')
       expect(f.pipeline.window.getStatus().retainedFrames).toBe(1); expect(f.pipeline.window.snapshot(old.id, ['assistant-text']).available).toBe(false)
       f.feed('session_before_tree'); expect(f.pipeline.window.getStatus().sources).toBe(0)
     } finally { f.pipeline.dispose() }
-    const w = new RealtimeMaterialWindow({ enabled: true, allowedKinds: ['tool-progress'] }); const handlers = new Map<string, any>(); let detached = 0
-    const tap = createPiMaterialTap({ enabled: true, observer: { frames: [] }, window: w, step: () => 0 })
-    tap.extension({ on(name, handler) { handlers.set(name, handler); return () => { detached++ } } })
-    handlers.get('session_start')({}, { sessionManager: { getSessionId: () => 's' } }); expect(w.getStatus().state).toBe('stopped'); tap.dispose(); tap.dispose(); expect(detached).toBe(observationEvents.length)
+    const g = setup(), handlers = new Map<string, any>(); let detached = 0
+    const close = attachPiFrames({ on(name, handler) { handlers.set(name, handler); return () => { detached++ } } }, { frames: [] }, g.pipeline)
+    handlers.get('session_start')({}, { sessionManager: { getSessionId: () => 's' } }); expect(g.pipeline.window.getStatus().state).toBe('stopped'); close(); close(); expect(detached).toBe(observationEvents.length); g.pipeline.dispose()
   })
 })
 
-if (process.env.PI_MONITORING_REQUIRE_SDK === '1' && !sdkEntry) throw new Error('B qualification requires an actual installed SDK; skipped cases do not qualify')
-const actual = sdkEntry ? describe : describe.skip
+const actual = describe
 const sdkProofs: any[] = []
 actual('B ACTUAL SDK/faux source and scripted native-classifier composition', () => {
   let originalFetch: typeof globalThis.fetch, fetchAttempts = 0
   beforeAll(() => { originalFetch = globalThis.fetch; globalThis.fetch = Object.assign(async () => { fetchAttempts++; throw new Error('B qualification forbids external fetch') }, originalFetch) as typeof fetch })
   afterAll(() => {
     globalThis.fetch = originalFetch; expect(fetchAttempts).toBe(0)
-    if (process.env.PI_MONITORING_REQUIRE_SDK === '1') expect(sdkProofs).toHaveLength(4)
+    expect(sdkProofs).toHaveLength(4)
     if (process.env.PI_MONITORING_SELECTION_REPORT) writeFileSync(process.env.PI_MONITORING_SELECTION_REPORT, JSON.stringify({ schemaVersion: 'monitoring-realtime-B/v1', sdkEntry, externalFetchAttempts: fetchAttempts, realModelCalls: 0, scriptedClassifierOnly: true, actualUserData: false, liveActivation: false, mainAgentInjected: false, semanticAccuracyMeasured: false, proofs: sdkProofs }, null, 2) + '\n')
   })
   const make = (modules: readonly RealtimeWatchModule[], options: { response?: (request: any, context: any) => any; toolDelay?: Promise<void>; realtimeLimits?: any } = {}) => {
     const model = fixture(), observer = new PiMonitoringObserver(() => undefined)
     ;(model.host.backends as any).native = { ...model.host.backends.native, invoke: (request: any, context: any) => { model.calls.push({ request, context }); return options.response ? options.response(request, context) : outputFor(request) } }
-    const pipeline = createRealtimeSelectionPipeline({ enabled: true, observer, material: { allowedKinds: allKinds, toolFields: { synthetic: ['value'] }, references: refs }, selection: { modules, modelConfig: config(), modelHost: model.host, goal: 'Synthetic actual-SDK material proof', isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000, ...options.realtimeLimits } })
-    return { model, observer, pipeline, async fixture() { return createSdkFixture({ observer, toolDelay: options.toolDelay, extraFactories: [pipeline.extension] }) } }
+    const pipeline = createRealtimeSelectionPipeline({ enabled: true, material: { allowedKinds: allKinds, toolFields: { synthetic: ['value'] }, references: refs }, selection: { modules, modelConfig: config(), modelHost: model.host, goal: 'Synthetic actual-SDK material proof', isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000, ...options.realtimeLimits } })
+    return { model, observer, pipeline, async fixture() { return createSdkFixture({ observer, toolDelay: options.toolDelay, extensions: [pi => { attachPiFrames(pi as any, observer, pipeline) }] }) } }
   }
   test('native tool progress text is captured separately from unchanged observer and selected while tool is running', async () => {
     const toolGate = deferred<void>(), called = deferred<void>()

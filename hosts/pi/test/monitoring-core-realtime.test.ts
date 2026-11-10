@@ -1,9 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
-import { RealtimeMonitoringCoordinator, createPiRealtimeTap, type RealtimeOptions, type RealtimePrepared, type RealtimeLease, type RealtimeOffer } from '../src/engine/monitoring-core-realtime.ts'
-import { PiMonitoringObserver, observationEvents, type ObservationFrame, type ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
-import { createSdkFixture, deferred, sdkEntry } from '../../packages/lazy-harness-pi/tests/support/monitoring-sdk-fixture.ts'
+import { RealtimeMonitoringCoordinator, type RealtimeOptions, type RealtimePrepared, type RealtimeLease, type RealtimeOffer } from '@lazy-harness/monitoring-core/engine/monitoring-core-realtime.ts'
+import { PiMonitoringObserver, observationEvents, type ObservationFrame, type ObservationSnapshot } from '../src/index.ts'
+import { sdkFixture as createSdkFixture } from './support/pending-fixtures.ts'
+import { deferred } from './support/real-sdk.ts'
+import { attachPiFrames } from '../src/index.ts'
+import { attachCoordinator } from './support/pending-fixtures.ts'
+const sdkEntry = import.meta.resolve('@earendil-works/pi-coding-agent')
 
 const prepared = (channel: 'context' | 'module' = 'module', payload: any = { marker: 'PREPARED_SYNTHETIC_ONLY' }): RealtimePrepared => ({ channel, payload })
 function setup(overrides: Partial<RealtimeOptions> = {}) {
@@ -21,14 +25,11 @@ function setup(overrides: Partial<RealtimeOptions> = {}) {
 const reasons = (c: RealtimeMonitoringCoordinator) => c.traces.map(x => x.reason)
 
 describe('A realtime mechanical qualification (not semantic model accuracy)', () => {
-  test('default off and tap default off create no handlers/jobs; options are captured', () => {
+  test('default off creates no jobs; options are captured', () => {
     const options: RealtimeOptions = { watchEvents: ['tool_result'], isPermitted: () => true, dependencies: () => [{ id: 'd', version: '1' }], sourceVersion: () => '1', prepare: () => prepared() }
     const c = new RealtimeMonitoringCoordinator(options); (options as any).enabled = true
     expect(c.start({ sessionId: 's', binding: 1 })).toBe(false)
-    let registered = 0
-    const tap = createPiRealtimeTap({ observer: { frames: [] }, coordinator: c })
-    tap.extension({ on() { registered++; return () => undefined } })
-    expect(registered).toBe(0); expect(c.getStatus().started).toBe(0); expect(c.traces).toHaveLength(0); tap.dispose()
+    expect(c.getStatus().started).toBe(0); expect(c.traces).toHaveLength(0); c.dispose()
   })
   test.each([0, -1, NaN, Infinity, 2147483648])('invalid timeout %s rejects', timeout => {
     expect(() => setup({ limits: { jobTimeoutMs: timeout } })).toThrow()
@@ -164,36 +165,34 @@ describe('A realtime mechanical qualification (not semantic model accuracy)', ()
       const h = setup({ prepare }); h.emit('tool_result'); await h.coordinator.idle(); expect(h.coordinator.getStatus().ready).toBe(0); expect(JSON.stringify(h.coordinator.traces)).not.toContain('SECRET_ERROR'); h.coordinator.dispose()
     }
   })
-  test('tap validates registration order, fresh frame per hook and owns all unsubscribe attempts', () => {
+  test('attachPiFrames fails closed without a fresh frame and attempts every unsubscribe once', () => {
     const f = setup(), handlers = new Map<string, any>(); let detached = 0
-    const tap = createPiRealtimeTap({ enabled: true, observer: { frames: [] }, coordinator: f.coordinator })
-    tap.extension({ on(name, handler) { handlers.set(name, handler); return () => { detached++ } } })
-    expect(handlers.size).toBe(observationEvents.length); expect(() => tap.extension({ on() {} })).toThrow()
+    const close = attachPiFrames({ on(name, handler) { handlers.set(name, handler); return () => { detached++ } } }, { frames: [] }, { accept: frame => f.coordinator.accept(frame), halt: reason => f.coordinator.stop(reason) })
+    expect(handlers.size).toBe(observationEvents.length)
     handlers.get('tool_result')({}, { sessionManager: { getSessionId: () => 'mechanical-session' } })
-    expect(reasons(f.coordinator)).toContain('missing_source_frame'); tap.dispose(); tap.dispose(); expect(detached).toBe(observationEvents.length)
+    expect(reasons(f.coordinator)).toContain('missing_source_frame'); close(); close(); expect(detached).toBe(observationEvents.length); f.coordinator.dispose()
     const g = setup(); let attempts = 0
-    const broken = createPiRealtimeTap({ enabled: true, observer: { frames: [] }, coordinator: g.coordinator })
-    broken.extension({ on() { return () => { attempts++; if (attempts === 1) throw new Error('synthetic') } } })
-    expect(() => broken.dispose()).toThrow(); expect(attempts).toBe(observationEvents.length); expect(g.coordinator.getStatus().state).toBe('disposed')
+    const broken = attachPiFrames({ on() { return () => { attempts++; if (attempts === 1) throw new Error('synthetic') } } }, { frames: [] }, { accept: frame => g.coordinator.accept(frame) })
+    broken(); broken(); expect(attempts).toBe(observationEvents.length); g.coordinator.dispose(); expect(g.coordinator.getStatus().state).toBe('disposed')
   })
 })
 
-if (process.env.PI_MONITORING_REQUIRE_SDK === '1' && !sdkEntry) throw new Error('A-stage qualification requires an explicit actual SDK entry; skipped SDK cases are not a pass')
-const actual = sdkEntry ? describe : describe.skip
+const actual = describe
 const sdkProofs: any[] = []
 actual('A realtime ACTUAL SDK / native faux provider (no live/model qualification)', () => {
   let originalFetch: typeof globalThis.fetch, fetchAttempts = 0
   beforeAll(() => { originalFetch = globalThis.fetch; globalThis.fetch = Object.assign(async () => { fetchAttempts++; throw new Error('network forbidden in A SDK qualification') }, originalFetch) as typeof fetch })
   afterAll(() => {
     globalThis.fetch = originalFetch; expect(fetchAttempts).toBe(0)
-    if (process.env.PI_MONITORING_REQUIRE_SDK === '1') expect(sdkProofs).toHaveLength(4)
+    expect(sdkProofs).toHaveLength(4)
     if (process.env.PI_MONITORING_REALTIME_REPORT) writeFileSync(process.env.PI_MONITORING_REALTIME_REPORT, JSON.stringify({ schemaVersion: 'monitoring-realtime-A/v1', sdkEntry, externalFetchAttempts: fetchAttempts, actualUserData: false, liveActivation: false, realModelCalls: 0, mainAgentInjected: false, proofs: sdkProofs }, null, 2) + '\n')
   })
-  const make = (prepare: RealtimeOptions['prepare'], watchEvents: string[], extraFactories: any[] = []) => {
+  const make = (prepare: RealtimeOptions['prepare'], watchEvents: string[], extensions: any[] = []) => {
     const observer = new PiMonitoringObserver(() => undefined)
     const coordinator = new RealtimeMonitoringCoordinator({ enabled: true, watchEvents, isPermitted: () => true, dependencies: () => [{ id: 'synthetic-dependency', version: 'v1' }], sourceVersion: id => id === 'synthetic-dependency' ? 'v1' : undefined, prepare, limits: { jobTimeoutMs: 10000 } })
-    const tap = createPiRealtimeTap({ enabled: true, observer, coordinator })
-    return { observer, coordinator, tap, fixture: () => createSdkFixture({ observer, extraFactories: [tap.extension, ...extraFactories] }) }
+    let close = () => {}
+    const tap = { extension: (pi: any) => { close = attachCoordinator(pi, observer, coordinator) }, dispose: () => { close(); coordinator.dispose() } }
+    return { observer, coordinator, tap, fixture: () => createSdkFixture({ observer, extensions: [tap.extension, ...extensions] }) }
   }
   test('streaming tool progress dispatches before settled and late module preparation survives normal completion', async () => {
     const began = deferred<RealtimeLease>(), finish = deferred<RealtimePrepared | undefined>()
@@ -226,7 +225,7 @@ actual('A realtime ACTUAL SDK / native faux provider (no live/model qualificatio
     let coordinator!: RealtimeMonitoringCoordinator
     const consume = (pi: any) => { for (const name of ['context', 'context_with_system']) pi.on(name, () => { const batch = coordinator.takeReady('context'); reads.push({ name, step: coordinator.getStatus().step, count: batch.length }); offers.push(...batch); return undefined }) }
     const x = make(() => { began.resolve(); return prepared('context') }, ['tool_execution_start'], [consume]); coordinator = x.coordinator
-    const f = await createSdkFixture({ observer: x.observer, toolDelay: toolGate.promise, extraFactories: [x.tap.extension, consume] })
+    const f = await createSdkFixture({ observer: x.observer, toolDelay: toolGate.promise, extensions: [x.tap.extension, consume] })
     try {
       f.setSteps([f.ai.fauxAssistantMessage([f.ai.fauxToolCall('synthetic', { value: 3 })], { stopReason: 'toolUse' }), f.ai.fauxAssistantMessage('after handoff')])
       const run = f.session.prompt('synthetic handoff'); await began.promise; await x.coordinator.idle(); expect(x.coordinator.getStatus().ready).toBe(1)

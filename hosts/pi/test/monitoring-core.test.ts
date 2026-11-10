@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { MonitoringCore, type ContextSnapshot, type CoreEvent, type Decision, type JudgeBatchPort, type Processor, type Proposal } from '../src/engine/monitoring-core.ts'
-import { createAuditObserver, createClassifierJudge, createContextReferences, createKnowledgeCandidate, createMemorySink, runCoreScenarios, type CoreScenarioFixture } from '../../.lazy-harness/scripts/monitoring-core-examples.ts'
+import { MonitoringCore, type ContextSnapshot, type CoreEvent, type Decision, type JudgeBatchPort, type Processor, type Proposal } from '@lazy-harness/monitoring-core/engine/monitoring-core.ts'
+import { createAuditObserver, createContextReferences, createMemorySink } from './support/pending-fixtures.ts'
 const context = (version = 'v1'): ContextSnapshot => ({ scopeId: 'scope', version, goal: 'synthetic test', references: [{ id: 'ref', kind: 'knowledge', version: 'r1', content: 'synthetic evidence' }] })
 const event = (sequence = 1, version = 'v1'): CoreEvent => ({ id: `e${sequence}`, kind: 'user.input', scopeId: 'scope', contextVersion: version, sequence, payload: { text: 'synthetic user statement' } })
 const question = { instructions: 'Should this module run?', criteria: { run: 'needed', skip: 'not needed', defer: 'uncertain' } }
@@ -171,29 +169,4 @@ test('core capacity: queue overflow and queued deadlines do not release a hung p
   expect(core.getStatus().queued).toBe(0)
   expect(core.getStatus().active).toBe(1)
   release(); await tick(); expect(core.getStatus().active).toBe(0); core.dispose()
-})
-
-describe('functional reference examples', () => {
-  const fixture = JSON.parse(readFileSync(fileURLToPath(new URL('../../.lazy-harness/fixtures/monitoring-core/scenarios.json', import.meta.url)), 'utf8')) as CoreScenarioFixture
-  test('replays needed, unneeded and ambiguous cases through the same core (not a model-accuracy claim)', async () => {
-    const replay: JudgeBatchPort = async tasks => Object.fromEntries(tasks.map(t => {
-      const id = t.view.event.id.replace('evt-', '')
-      const scenario = fixture.scenarios.find(c => c.id === id)!
-      return [t.processorId, { mode: scenario.expected[t.processorId], reason: 'explicit test oracle', evidenceRefs: [t.view.eventRef, ...scenario.expectedReferenceIds.filter(id => t.view.context.references.some(r => r.id === id))] }]
-    }))
-    const result = await runCoreScenarios(fixture, replay)
-    expect(result.comparisons.every(c => c.matched)).toBe(true)
-    expect(result.records.filter(r => r.kind === 'knowledge.candidate')).toHaveLength(1)
-    expect(result.records.filter(r => r.kind === 'context.references')).toHaveLength(1)
-    expect(result.records.filter(r => r.kind === 'audit.observation')).toHaveLength(1)
-    const candidate = result.records.find(r => r.kind === 'knowledge.candidate')!
-    expect((candidate.payload as any).quote).toBe(fixture.scenarios[0]!.text)
-    expect((result.records.find(r => r.kind === 'context.references')!.payload as any).references[0].id).toBe('team-rule')
-  })
-  test('does not expose gold labels in classifier state and treats missing answers as uncertainty', async () => {
-    const candidate = createKnowledgeCandidate(), snapshot = context()
-    const tasks = [{ processorId: candidate.id, question: candidate.question!, view: { event: event(), eventRef: 'event:e1', context: snapshot } }]
-    const adapter = createClassifierJudge(async state => { expect(JSON.stringify(state)).not.toContain('expected'); return { stopReason: 'stop', answers: {} } })
-    expect((await adapter(tasks, new AbortController().signal))[candidate.id]?.mode).toBe('defer')
-  })
 })

@@ -1,18 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
-import { MonitoringObservationBridge, type BridgeOptions, type MaterialEnvelope, type MaterialReceiver } from '../src/engine/monitoring-core-observation.ts'
-import { createAuditObserver, createContextReferences, createKnowledgeCandidate } from '../../.lazy-harness/scripts/monitoring-core-examples.ts'
-import type { JudgeTask, Processor } from '../src/engine/monitoring-core.ts'
-import { PiMonitoringObserver, type ObservationFrame, type ObservationSnapshot } from '../src/observer/monitoring-observer.ts'
-import { clone, createSdkFixture, deferred, sdkEntry } from '../../packages/lazy-harness-pi/tests/support/monitoring-sdk-fixture.ts'
+import { MonitoringObservationBridge, type BridgeOptions, type MaterialEnvelope, type MaterialReceiver } from '@lazy-harness/monitoring-core/engine/monitoring-core-observation.ts'
+import { createAuditObserver, createContextReferences, createKnowledgeCandidate } from './support/pending-fixtures.ts'
+import type { JudgeTask, Processor } from '@lazy-harness/monitoring-core/engine/monitoring-core.ts'
+import { PiMonitoringObserver, type ObservationFrame, type ObservationSnapshot } from '../src/index.ts'
+import { clone, sdkFixture as createSdkFixture } from './support/pending-fixtures.ts'
+import { deferred } from './support/real-sdk.ts'
+const sdkEntry = import.meta.resolve('@earendil-works/pi-coding-agent')
 
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex')
 const reference = { id: 'synthetic-allowed', kind: 'knowledge', version: 'revision-7', content: 'EXACT_SELECTED_SYNTHETIC_BODY' }
 const references = [reference, { id: 'synthetic-not-selected', kind: 'knowledge', version: 'revision-8', content: 'UNSELECTED_BODY_MUST_NOT_DELIVER' }, { id: 'restricted-reference', kind: 'restricted', version: 'revision-9', content: 'RESTRICTED_BODY_MUST_NOT_LEAK' }]
 const assistant: Processor = { id: 'assistant.material', eventKinds: ['assistant.message'], referenceKinds: [], allowedActions: ['assistant.material'], run: ({ view }) => [{ kind: 'assistant.material', payload: view.event.payload, evidenceRefs: [view.eventRef] }] }
 function setup(overrides: Partial<BridgeOptions> = {}) {
-  const records: MaterialEnvelope[] = [], views: readonly JudgeTask[][] = [] as any
+  const records: MaterialEnvelope[] = [], views: (readonly JudgeTask[])[] = []
   const receiver: MaterialReceiver = (material, lease) => {
     // Independent target validates and records the ACTUAL body, not the core status/echo.
     const { contentHash, ...body } = material
@@ -23,7 +25,7 @@ function setup(overrides: Partial<BridgeOptions> = {}) {
     return { status: 'received', requestId: material.requestId, destination: material.destination, contentHash, recordId: `received:${hash(material.requestId)}` }
   }
   const options: BridgeOptions = { enabled: true, goal: 'Controlled synthetic material delivery only', references, processors: [createKnowledgeCandidate(), createContextReferences(), createAuditObserver(), assistant].map(spec => ({ spec, grants: { actions: spec.allowedActions, referenceKinds: spec.referenceKinds }, destination: `synthetic:${spec.id}` })), receiver,
-    judgeBatch: async tasks => { (views as JudgeTask[][]).push(clone(tasks)); return Object.fromEntries(tasks.map(t => [t.processorId, { mode: 'run', reason: 'Scripted transport test double, not semantic classification', evidenceRefs: [t.view.eventRef, ...t.view.context.references.filter(r => r.id === reference.id).map(r => r.id)] }])) }, ...overrides }
+    judgeBatch: async tasks => { views.push(clone(tasks)); return Object.fromEntries(tasks.map(t => [t.processorId, { mode: 'run', reason: 'Scripted transport test double, not semantic classification', evidenceRefs: [t.view.eventRef, ...t.view.context.references.filter(r => r.id === reference.id).map(r => r.id)] }])) }, ...overrides }
   return { bridge: new MonitoringObservationBridge(options), records, views, receiver, options }
 }
 function mechanicalFrames() {
@@ -133,7 +135,7 @@ describe('P3 mechanical bridge/receipt guards (not actual-SDK proof)', () => {
   })
 })
 
-const actual = sdkEntry ? describe : describe.skip
+const actual = describe
 const proofs: any[] = []
 let networkAttempts = 0
 actual('P3 ACTUAL SDK settled source→core→independent receiver', () => {
@@ -143,7 +145,7 @@ actual('P3 ACTUAL SDK settled source→core→independent receiver', () => {
   async function fixture(overrides: Partial<BridgeOptions> = {}, sdkOptions: { persistentLifecycle?: boolean; toolThrows?: boolean } = {}, observerLimits: any = {}) {
     const x = setup(overrides)
     const observer: PiMonitoringObserver = new PiMonitoringObserver((frame, lease) => x.bridge.consume(frame, observer.frames, lease), { workerTimeoutMs: 5000, ...observerLimits })
-    const f = await createSdkFixture({ ...sdkOptions, observer })
+    const f = await createSdkFixture({ observer, toolThrows: sdkOptions.toolThrows })
     return { ...x, f, async dispose() { await f.dispose(); x.bridge.dispose() } }
   }
   function assertSources(x: Awaited<ReturnType<typeof fixture>>) {
@@ -216,12 +218,12 @@ actual('P3 ACTUAL SDK settled source→core→independent receiver', () => {
   test('real session replacement cancels old receiver without blocking new foreground work', async () => {
     const entered = deferred(), release = deferred(); let calls = 0
     const base = setup()
-    const x = await fixture({ coreLimits: { maxConcurrent: 1 }, receiver: async (m, lease) => { if (++calls === 1) { entered.resolve(); await release.promise } return base.receiver(m, lease) } }, { persistentLifecycle: true })
+    const x = await fixture({ coreLimits: { maxConcurrent: 1 }, receiver: async (m, lease) => { if (++calls === 1) { entered.resolve(); await release.promise } return base.receiver(m, lease) } }, {})
     try {
       x.f.setSteps([x.f.ai.fauxAssistantMessage('old-answer')]); await x.f.session.prompt('old-input'); await entered.promise
       const oldId = x.f.session.sessionManager.getSessionId(); await x.f.runtime.newSession()
       x.f.setSteps([x.f.ai.fauxAssistantMessage('new-answer')]); await x.f.session.prompt('new-input')
-      expect(x.f.session.messages.at(-1).content[0].text).toBe('new-answer')
+      expect(x.f.session.messages.at(-1)).toMatchObject({ role: 'assistant', content: [{ type: 'text', text: 'new-answer' }] })
       release.resolve(); await x.f.observer.idle()
       expect(base.records.length).toBeGreaterThan(0); expect(base.records.every(m => m.source.sessionId !== oldId)).toBe(true)
       expect(x.bridge.reports.some(b => b.status === 'stale')).toBe(true); x.f.assertReconciled()
@@ -238,7 +240,7 @@ actual('P3 ACTUAL SDK settled source→core→independent receiver', () => {
       const oldSettlement = x.bridge.getStatus().scannedCursor
       if (transition === 'tree') {
         const user = x.f.session.sessionManager.getBranch().find((e: any) => e.type === 'message' && e.message.role === 'user')
-        await x.f.session.navigateTree(user.id, { summarize: false })
+        expect(user).toBeDefined(); await x.f.session.navigateTree(user!.id, { summarize: false })
       } else { x.f.setSteps([x.f.ai.fauxAssistantMessage('P3_SYNTHETIC_COMPACTION')]); await x.f.session.compact() }
       release.resolve(); await x.f.observer.idle(); expect(base.records).toHaveLength(0)
       x.f.setSteps([x.f.ai.fauxAssistantMessage('after-transition-answer')]); await x.f.session.prompt('after-transition-input'); await x.f.observer.idle()
