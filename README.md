@@ -21,6 +21,20 @@ Modules: `references` (U1), `rule-steering` (U6), `memory` (new). Data (traces, 
 
 Records (design, decisions, measurements) stay in the lazy-harness repository under `.lazy-harness/`; see `MIGRATION.md`.
 
+## Module and attachment contracts
+
+- [Module shape, official registration, stage safety and deviation checklist](docs/design/module-contract.md)
+- [Host attachment, needs, lifecycle, delivery and deferred consumer handoff](docs/design/attachment-contract.md)
+- [Offline three-module reference composition](examples/composition/README.md)
+
+Pi-generic `createReadResultAttestor` is exported by `@lazy-harness/monitoring-host-pi`.
+It pairs proven main-agent read calls/results and classifies full/partial/unknown exposure;
+capture, document/catalog identity, namespace, permissions and read storage are injected
+host interfaces. It installs no hooks and reads no project files. See the attachment
+contract for the decision table, hashline terminal-LF limitation and lifecycle fencing.
+The lazy-harness thin consumer remains **deferred by user decision**; this repository
+provides its contracts and offline template, not live integration or production approval.
+
 ## Worker and runtime boundary (D1')
 
 No package here depends on Fabric. Core owns `WorkerExecutionPort<Input, Output>`, exported from
