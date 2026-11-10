@@ -15,7 +15,7 @@ Exports from the package root:
 - `referencesQuestionNarrow`: comparison-only immediate scoped-lookup question. Not used by the declaration. Extracted verbatim from the old `createContextReferences().question`; the old example processor, classifier adapter, sinks and scenario runner are deliberately **not** dependencies or exports. Those v1 proposal mechanics are replaced by core selection and v2 jobs.
 - `referencesDeclaration`: validated/frozen purpose, raw `input` watch, four message-history turns, `user-text`/`conversation-history`/`knowledge`, `session.read-records` and `region.compact` needs, one read-only per-event `deliver` template. Default report is `always`; `never` and `on-result` also supported.
 - `referencesBinding`: version `2.1.1`, declaration hash, grants, `parent.context` destination and empty-object-only settings factory. Uses core declaration/JSON validation directly instead of importing the schema library. Its processor is selection metadata; call the job runtime for delivery, not the legacy empty `run` method.
-- `createReferencesRegistration(options?)`: official fully formed runtime registration (module ID, validated declaration/hash, effective jobs and **explicit stage**). Defaults to `observe`: no job execution, effects or reports. `ReferencesRegistrationOptions` accepts `stage` (`off`, `observe`, `shadow`, `active`) and an optional tightened declaration `maxStage` (`observe`, `shadow`, `active`). A selected stage above the ceiling, or an unknown stage/ceiling, is rejected. Without a tightened ceiling, the shipped declaration/hash are unchanged and its ceiling is `active`.
+- `createReferencesRegistration(options?)`: official fully formed runtime registration (module ID, validated declaration/hash, effective jobs and **explicit stage**). Defaults to `observe`: no job execution, effects or reports. `ReferencesRegistrationOptions` accepts `stage` (`off`, `observe`, `shadow`, `active`) and an optional tightened declaration `maxStage` (`observe`, `shadow`, `active`). A selected stage above the ceiling, or an unknown stage/ceiling, is rejected. Without a tightened ceiling, registration uses the shipped declaration with explicit `maxStage: 'active'`; that ceiling is not consent to activate.
 - `AlreadyRead`: host callback `(trigger: { sessionId; eventId }) => ReadonlySet<string>`.
 - `createReferencesHandlers(alreadyRead?)`: handler map keyed by `context.references.deliver`.
 - `referencesHandlers`: stateless fallback map (no read filter).
@@ -45,8 +45,12 @@ Read-only source pin: `396ae1d790bf9a52437180e4342cf17f7774752f`; designated mod
 | U1 partial already-read removal; all-read rejection | Host ledger test, including output IDs, isolation and stateless fallback |
 | Compaction reset (source callback contract, not an old assertion) | Host-owned reset test and actual `session_compact` fixture callback through the bridge |
 | New current-core obligations | Unsupported capability startup, malformed own-data frames/accessors, denied permission, late source/intent reports, matching enqueue and separate synthetic hook receipts |
-| S7 U6 policy registry/reminder/turn ledger; U6 reference/verifier/replay suites | **Not ported:** rule-steering/helper work is a separately scoped migration; real policy registry is forbidden fixture data |
+| S7 U6 policy registry/reminder/turn ledger; U6 reference/verifier/replay suites | Owned by the shipped `modules/rule-steering` and shared eval suites, not this module; real policy registries remain forbidden fixture data |
 | Old example's unrelated candidate/audit/classifier/scenario helpers | **Not ported:** only the narrow question was a references-module dependency; current core supplies the bridge/runtime |
+
+## Compatibility
+
+**BREAKING (declaration/hash):** the declaration now explicitly sets `maxStage: 'active'` instead of relying on core's absent-ceiling fallback. The validated hash changes; regenerate hash-bound replay/config artifacts. Binding version remains `2.1.1` (private workspace); do not reuse old artifacts based on that version alone. Runtime behavior is unchanged: default observe, active only by explicit opt-in, and callers may still tighten the ceiling.
 
 ## Offline evaluation and limits
 
@@ -54,4 +58,4 @@ Read-only source pin: `396ae1d790bf9a52437180e4342cf17f7774752f`; designated mod
 
 Run `bun test modules/references/test packages/eval/test/references.test.ts` and root `bun run test` / `bun run typecheck`. Tests are hand-authored invented mechanical fixtures, not semantic model judgments or P5 gold. The byte-identical replay test checks real template completion contents as well as repeated artifact bytes. No experiment artifacts are stored in Git.
 
-**NOT qualified / UNVERIFIED:** semantic recall, selection accuracy, usefulness and all P5 thresholds; real inference; live host activation; final provider-input delivery; resource/latency/cost ceilings; crash durability; correctness of a consumer's read observation, origin policy, source permission/version resolvers or compaction reducer. Rule-steering, U6 helpers, memory and P4 evaluator migration debts remain separate. Nothing here approves production use.
+**NOT qualified / UNVERIFIED:** semantic recall, selection accuracy, usefulness and all P5 thresholds; real inference; live host activation; final provider-input delivery; resource/latency/cost ceilings; crash durability; correctness of a consumer's read observation, origin policy, source permission/version resolvers or compaction reducer. The shipped rule-steering, memory and P4 evaluator have their own qualification limits. Nothing here approves production use.

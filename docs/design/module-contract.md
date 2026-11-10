@@ -161,7 +161,7 @@ that every negative case lives in a separate per-module test.
 | Private package / public-core-only imports | P | P | P |
 | Purpose/criteria / validated hash / empty settings | P | P | P |
 | Runnable watch / bounded kinds/history | D: raw input, not origin-filtered | P: named tool/assistant | P: named finalized/steer |
-| Explicit author maxStage | D: omitted = active | P: observe | P: shadow |
+| Explicit author maxStage | P: explicit active; observe default | P: observe | P: shadow |
 | Explicit observe registration helper | P: off/shadow/active options | D: fixed observe, no stage/off argument | P: off/observe/shadow |
 | Required external need preflight | D: read optional unless versioned registration | P: custom policy validator H | P: sink required in configured preflight |
 | Version-aware suppression | D: legacy ID-only callback retained | Not a read consumer | Not a read consumer |
@@ -171,7 +171,7 @@ that every negative case lives in a separate per-module test.
 | Preflight/stage/frame/capability checks | P: module + core | P: module + core | P: module + core |
 | Port conformance | P: read + core worker | D: no standard policy/verifier suite; core worker only | P: core sink/worker + module safety probes |
 | Byte-identical shared eval | P: eval/test/references.test.ts | P: eval/test/rule-steering.test.ts | P: eval/test/memory.test.ts |
-| README / commentary consistency | D: historical migration-debt text | D: stale source comment says runtime active default | D: older README assigns all attestation to host repo |
+| README / commentary consistency | P: shipped module ownership + hash compatibility | D: stale source comment says runtime active default | D: older README assigns all attestation to host repo |
 
 Current runtime default is observe, not that stale rule-steering comment. Memory's older
 ownership sentence is narrowed here: Pi-generic read-result attestation belongs in

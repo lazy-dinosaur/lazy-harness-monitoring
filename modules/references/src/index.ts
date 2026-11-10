@@ -24,6 +24,7 @@ export const referencesQuestionNarrow = freezeMonitoringData({
 })
 const grants = freezeMonitoringData({ actions: ['monitoring.selected-material'], referenceKinds: ['user-text', 'conversation-history', 'knowledge'] })
 const validated = validateMonitoringModuleDeclaration({
+  maxStage: 'active',
   purpose: { question: referencesQuestion },
   watch: { events: ['input'], kinds: grants.referenceKinds, history: { turns: 4, granularity: 'message' } },
   needs: [{ id: 'already-read', adapter: 'session.read-records', optional: true }, { id: 'region', adapter: 'region.compact' }],

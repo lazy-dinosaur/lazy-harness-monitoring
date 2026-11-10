@@ -8,6 +8,9 @@ describe('references binding and gap-filler purpose', () => {
   test('public binding validates, hashes and maps onto the selection bridge', () => {
     expect(referencesBinding.declarationHash).toMatch(/^[a-f0-9]{64}$/)
     expect(referencesBinding.declarationHash).toBe(canonicalJsonHash(referencesDeclaration))
+    expect(referencesDeclaration.maxStage).toBe('active')
+    const { maxStage: _, ...legacyDeclaration } = referencesDeclaration
+    expect(canonicalJsonHash(legacyDeclaration)).not.toBe(referencesBinding.declarationHash!)
     expect(canonicalJsonHash({ ...referencesDeclaration, purpose: { question: referencesQuestionNarrow } })).not.toBe(referencesBinding.declarationHash)
     const watch = watchModuleFromDeclaration(REFERENCES_MODULE_ID, referencesDeclaration, referencesBinding.grants, referencesBinding.destination)
     expect(watch.includeCurrentMaterial).toBe(true)
