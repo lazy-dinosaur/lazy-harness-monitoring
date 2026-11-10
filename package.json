@@ -9,8 +9,8 @@
     "examples/*"
   ],
   "scripts": {
-    "test": "bun test packages/core/test hosts/pi/test --path-ignore-patterns=**/pending-from-core/**",
-    "typecheck": "tsc -p packages/core/tsconfig.json && tsc -p hosts/pi/tsconfig.json"
+    "test": "bun test packages/core/test hosts/pi/test packages/eval/test --path-ignore-patterns=**/pending-from-core/**",
+    "typecheck": "tsc -p packages/core/tsconfig.json && tsc -p hosts/pi/tsconfig.json && tsc -p examples/p1/tsconfig.json && tsc -p hosts/pi/test/tsconfig.json && tsc -p packages/eval/tsconfig.json"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",

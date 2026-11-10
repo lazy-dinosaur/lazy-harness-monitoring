@@ -1,0 +1,468 @@
+[
+  {
+    "id": "review.references",
+    "declaration": {
+      "purpose": {
+        "question": {
+          "instructions": "Does this synthetic request need the admitted reference?",
+          "criteria": {
+            "run": "Concrete synthetic need supported by visible evidence.",
+            "skip": "No current need in the synthetic evidence.",
+            "defer": "Synthetic evidence is incomplete or contested."
+          }
+        }
+      },
+      "watch": {
+        "events": [
+          "user.prompt"
+        ],
+        "kinds": [
+          "user-text",
+          "conversation-history",
+          "reference-doc"
+        ],
+        "history": {
+          "turns": 2,
+          "granularity": "message"
+        }
+      },
+      "maxStage": "active",
+      "jobs": [
+        {
+          "id": "prepare",
+          "form": "template",
+          "riskTier": "read-only",
+          "report": {
+            "supported": [
+              "never",
+              "on-result"
+            ],
+            "default": "on-result"
+          },
+          "idempotency": "per-event",
+          "output": "candidate",
+          "grants": {
+            "actions": [],
+            "referenceKinds": [
+              "user-text",
+              "conversation-history",
+              "reference-doc"
+            ]
+          }
+        }
+      ]
+    },
+    "grants": {
+      "actions": [],
+      "referenceKinds": [
+        "user-text",
+        "conversation-history",
+        "reference-doc"
+      ]
+    },
+    "ceiling": {
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "timeoutMs": 1000,
+      "models": [
+        {
+          "id": "offline-judge",
+          "version": "1",
+          "provider": "synthetic",
+          "providerVersion": "1",
+          "model": "scripted-classifier",
+          "modelVersion": "1"
+        }
+      ]
+    },
+    "knobs": {
+      "watchPoints": [
+        "user.prompt"
+      ],
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "historyTurns": 0,
+      "question": {
+        "instructions": "Does this synthetic request need the admitted reference?",
+        "criteria": {
+          "run": "Concrete synthetic need supported by visible evidence.",
+          "skip": "No current need in the synthetic evidence.",
+          "defer": "Synthetic evidence is incomplete or contested."
+        }
+      },
+      "model": {
+        "id": "offline-judge",
+        "version": "1",
+        "provider": "synthetic",
+        "providerVersion": "1",
+        "model": "scripted-classifier",
+        "modelVersion": "1"
+      },
+      "timeoutMs": 1000,
+      "report": "on-result",
+      "stage": "active"
+    },
+    "privateCandidate": false,
+    "references": [
+      {
+        "id": "synthetic-api",
+        "kind": "reference-doc",
+        "version": "synthetic-v1",
+        "content": "Synthetic API v1: use inspect() for a read-only view."
+      }
+    ]
+  },
+  {
+    "id": "review.rules",
+    "declaration": {
+      "purpose": {
+        "question": {
+          "instructions": "Does this synthetic step conflict with the visible working rule?",
+          "criteria": {
+            "run": "Concrete synthetic need supported by visible evidence.",
+            "skip": "No current need in the synthetic evidence.",
+            "defer": "Synthetic evidence is incomplete or contested."
+          }
+        }
+      },
+      "watch": {
+        "events": [
+          "assistant.message"
+        ],
+        "kinds": [
+          "assistant-text",
+          "working-rule"
+        ],
+        "history": {
+          "turns": 2,
+          "granularity": "message"
+        }
+      },
+      "maxStage": "active",
+      "jobs": [
+        {
+          "id": "prepare",
+          "form": "worker",
+          "riskTier": "read-only",
+          "report": {
+            "supported": [
+              "never",
+              "on-result"
+            ],
+            "default": "on-result"
+          },
+          "idempotency": "per-event",
+          "output": "candidate",
+          "grants": {
+            "actions": [],
+            "referenceKinds": [
+              "assistant-text",
+              "working-rule"
+            ]
+          },
+          "cost": {
+            "models": [
+              {
+                "role": "worker",
+                "profile": "offline-judge"
+              }
+            ],
+            "caps": {
+              "workerDispatches": 1
+            }
+          }
+        }
+      ]
+    },
+    "grants": {
+      "actions": [],
+      "referenceKinds": [
+        "assistant-text",
+        "working-rule"
+      ]
+    },
+    "ceiling": {
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "timeoutMs": 1000,
+      "models": [
+        {
+          "id": "offline-judge",
+          "version": "1",
+          "provider": "synthetic",
+          "providerVersion": "1",
+          "model": "scripted-classifier",
+          "modelVersion": "1"
+        }
+      ]
+    },
+    "knobs": {
+      "watchPoints": [
+        "assistant.message"
+      ],
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "historyTurns": 0,
+      "question": {
+        "instructions": "Does this synthetic step conflict with the visible working rule?",
+        "criteria": {
+          "run": "Concrete synthetic need supported by visible evidence.",
+          "skip": "No current need in the synthetic evidence.",
+          "defer": "Synthetic evidence is incomplete or contested."
+        }
+      },
+      "model": {
+        "id": "offline-judge",
+        "version": "1",
+        "provider": "synthetic",
+        "providerVersion": "1",
+        "model": "scripted-classifier",
+        "modelVersion": "1"
+      },
+      "timeoutMs": 1000,
+      "report": "on-result",
+      "stage": "active"
+    },
+    "privateCandidate": false,
+    "references": [
+      {
+        "id": "synthetic-rule",
+        "kind": "working-rule",
+        "version": "synthetic-v1",
+        "content": "Synthetic rule: inspect before changing the example file."
+      }
+    ]
+  },
+  {
+    "id": "review.memory-candidate",
+    "declaration": {
+      "purpose": {
+        "question": {
+          "instructions": "Is this synthetic fact durable enough for private review, not approval or writing?",
+          "criteria": {
+            "run": "Concrete synthetic need supported by visible evidence.",
+            "skip": "No current need in the synthetic evidence.",
+            "defer": "Synthetic evidence is incomplete or contested."
+          }
+        }
+      },
+      "watch": {
+        "events": [
+          "user.message"
+        ],
+        "kinds": [
+          "user-text",
+          "conversation-history"
+        ],
+        "history": {
+          "turns": 2,
+          "granularity": "message"
+        }
+      },
+      "maxStage": "shadow",
+      "jobs": [
+        {
+          "id": "prepare",
+          "form": "template",
+          "riskTier": "read-only",
+          "report": {
+            "supported": [
+              "never"
+            ],
+            "default": "never"
+          },
+          "idempotency": "per-subject",
+          "output": "candidate",
+          "grants": {
+            "actions": [],
+            "referenceKinds": [
+              "user-text",
+              "conversation-history"
+            ]
+          }
+        }
+      ]
+    },
+    "grants": {
+      "actions": [],
+      "referenceKinds": [
+        "user-text",
+        "conversation-history"
+      ]
+    },
+    "ceiling": {
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "timeoutMs": 1000,
+      "models": [
+        {
+          "id": "offline-judge",
+          "version": "1",
+          "provider": "synthetic",
+          "providerVersion": "1",
+          "model": "scripted-classifier",
+          "modelVersion": "1"
+        }
+      ]
+    },
+    "knobs": {
+      "watchPoints": [
+        "user.message"
+      ],
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "historyTurns": 0,
+      "question": {
+        "instructions": "Is this synthetic fact durable enough for private review, not approval or writing?",
+        "criteria": {
+          "run": "Concrete synthetic need supported by visible evidence.",
+          "skip": "No current need in the synthetic evidence.",
+          "defer": "Synthetic evidence is incomplete or contested."
+        }
+      },
+      "model": {
+        "id": "offline-judge",
+        "version": "1",
+        "provider": "synthetic",
+        "providerVersion": "1",
+        "model": "scripted-classifier",
+        "modelVersion": "1"
+      },
+      "timeoutMs": 1000,
+      "report": "never",
+      "stage": "shadow"
+    },
+    "privateCandidate": true,
+    "references": []
+  },
+  {
+    "id": "review.test-loop",
+    "declaration": {
+      "purpose": {
+        "question": {
+          "instructions": "Do these synthetic finalized failures warrant read-only loop advice?",
+          "criteria": {
+            "run": "Concrete synthetic need supported by visible evidence.",
+            "skip": "No current need in the synthetic evidence.",
+            "defer": "Synthetic evidence is incomplete or contested."
+          }
+        }
+      },
+      "watch": {
+        "events": [
+          "tool.after"
+        ],
+        "kinds": [
+          "tool-result",
+          "tool-meta",
+          "event-meta"
+        ],
+        "history": {
+          "turns": 2,
+          "granularity": "message"
+        }
+      },
+      "maxStage": "active",
+      "jobs": [
+        {
+          "id": "prepare",
+          "form": "template",
+          "riskTier": "read-only",
+          "report": {
+            "supported": [
+              "never",
+              "on-result"
+            ],
+            "default": "on-result"
+          },
+          "idempotency": "per-event",
+          "output": "candidate",
+          "grants": {
+            "actions": [],
+            "referenceKinds": [
+              "tool-result",
+              "tool-meta",
+              "event-meta"
+            ]
+          }
+        }
+      ]
+    },
+    "grants": {
+      "actions": [],
+      "referenceKinds": [
+        "tool-result",
+        "tool-meta",
+        "event-meta"
+      ]
+    },
+    "ceiling": {
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "timeoutMs": 1000,
+      "models": [
+        {
+          "id": "offline-judge",
+          "version": "1",
+          "provider": "synthetic",
+          "providerVersion": "1",
+          "model": "scripted-classifier",
+          "modelVersion": "1"
+        }
+      ]
+    },
+    "knobs": {
+      "watchPoints": [
+        "tool.after"
+      ],
+      "material": {
+        "maxSources": 16,
+        "maxBytes": 16384,
+        "maxSourceBytes": 8192
+      },
+      "historyTurns": 0,
+      "question": {
+        "instructions": "Do these synthetic finalized failures warrant read-only loop advice?",
+        "criteria": {
+          "run": "Concrete synthetic need supported by visible evidence.",
+          "skip": "No current need in the synthetic evidence.",
+          "defer": "Synthetic evidence is incomplete or contested."
+        }
+      },
+      "model": {
+        "id": "offline-judge",
+        "version": "1",
+        "provider": "synthetic",
+        "providerVersion": "1",
+        "model": "scripted-classifier",
+        "modelVersion": "1"
+      },
+      "timeoutMs": 1000,
+      "report": "on-result",
+      "stage": "active"
+    },
+    "privateCandidate": false,
+    "references": []
+  }
+]

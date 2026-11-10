@@ -1,0 +1,382 @@
+{
+  "schemaVersion": "monitoring-eval-labels/v1",
+  "dataset": {
+    "id": "synthetic-p0-dev",
+    "version": "1",
+    "split": "dev",
+    "hash": "3216fe7cff971feaa67036005389bbc33a5692d4ed1c298312bf302d800f2ce7"
+  },
+  "opportunities": [
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-reference-need",
+      "label": "positive",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-reference-none",
+      "label": "unresolved",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-rule-conflict",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-memory-durable",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-loop-third",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-reference-need",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-reference-none",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-rule-conflict",
+      "label": "positive",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-memory-durable",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-loop-third",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-reference-need",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-reference-none",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-rule-conflict",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-memory-durable",
+      "label": "positive",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-loop-third",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-reference-need",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-reference-none",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-rule-conflict",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-memory-durable",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-third",
+      "label": "positive",
+      "slices": [
+        "loop",
+        "dev"
+      ]
+    }
+  ],
+  "expectedTriggers": [
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-reference-need",
+      "point": "user.prompt"
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "dev-reference-none",
+      "point": "user.prompt"
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-rule-conflict",
+      "point": "assistant.message"
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "dev-rule-compliant",
+      "point": "assistant.message"
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-memory-durable",
+      "point": "user.message"
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "dev-memory-transient",
+      "point": "user.message"
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-first",
+      "point": "tool.after"
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-second",
+      "point": "tool.after"
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "dev-loop-third",
+      "point": "tool.after"
+    }
+  ]
+}

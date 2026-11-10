@@ -1,0 +1,382 @@
+{
+  "schemaVersion": "monitoring-eval-labels/v1",
+  "dataset": {
+    "id": "synthetic-p0-holdout",
+    "version": "1",
+    "split": "holdout",
+    "hash": "56d55e2305251470afd8b910e8ed1c4aa351a1542a4372860f6b31f4834a9d3e"
+  },
+  "opportunities": [
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-reference-need",
+      "label": "positive",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-reference-none",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-rule-conflict",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-memory-durable",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-loop-third",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-reference-need",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-reference-none",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-rule-conflict",
+      "label": "positive",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-memory-durable",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-loop-third",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-reference-need",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-reference-none",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-rule-conflict",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-memory-durable",
+      "label": "positive",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-loop-third",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-reference-need",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-reference-none",
+      "label": "negative",
+      "slices": [
+        "reference",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-rule-conflict",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-rule-compliant",
+      "label": "negative",
+      "slices": [
+        "rule",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-memory-durable",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-memory-transient",
+      "label": "negative",
+      "slices": [
+        "memory",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-first",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-second",
+      "label": "negative",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-third",
+      "label": "positive",
+      "slices": [
+        "loop",
+        "holdout"
+      ]
+    }
+  ],
+  "expectedTriggers": [
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-reference-need",
+      "point": "user.prompt"
+    },
+    {
+      "moduleId": "review.references",
+      "frameId": "holdout-reference-none",
+      "point": "user.prompt"
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-rule-conflict",
+      "point": "assistant.message"
+    },
+    {
+      "moduleId": "review.rules",
+      "frameId": "holdout-rule-compliant",
+      "point": "assistant.message"
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-memory-durable",
+      "point": "user.message"
+    },
+    {
+      "moduleId": "review.memory-candidate",
+      "frameId": "holdout-memory-transient",
+      "point": "user.message"
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-first",
+      "point": "tool.after"
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-second",
+      "point": "tool.after"
+    },
+    {
+      "moduleId": "review.test-loop",
+      "frameId": "holdout-loop-third",
+      "point": "tool.after"
+    }
+  ]
+}
