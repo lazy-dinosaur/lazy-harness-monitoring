@@ -12,13 +12,13 @@ export function parseRegionDataset(value: unknown): RegionDataset {
   if (!object(value) || !exact(value, ['schemaVersion', 'split', 'regions']) || value.schemaVersion !== 1 || value.split !== 'dev' || !Array.isArray(value.regions)) throw Error('invalid compaction dataset')
   const ids = new Set<string>()
   for (const r of value.regions) {
-    if (!object(r) || !exact(r, ['id', 'purpose', 'goal', 'frame', 'materials']) || !text(r.id) || ids.has(r.id) || !purposes.includes(r.purpose) || !text(r.goal) || !object(r.frame) || !exact(r.frame, ['id', 'sourceEvent', 'cursor']) || !text(r.frame.id) || !text(r.frame.sourceEvent) || !Number.isSafeInteger(r.frame.cursor) || r.frame.cursor < 1 || !Array.isArray(r.materials) || r.materials.length < 5 || r.materials.length > 15) throw Error('invalid region')
+    if (!object(r) || !exact(r, ['id', 'purpose', 'goal', 'frame', 'materials']) || !text(r.id) || ids.has(r.id) || !purposes.includes(r.purpose) || !text(r.goal) || !object(r.frame) || !exact(r.frame, ['id', 'sourceEvent', 'cursor']) || !text(r.frame.id) || !text(r.frame.sourceEvent) || !Number.isSafeInteger(r.frame.cursor) || r.frame.cursor < 1 || !Array.isArray(r.materials) || r.materials.length < 5 || r.materials.length > 32) throw Error('invalid region')
     ids.add(r.id); const items = new Set<string>()
     for (const m of r.materials) {
       if (!object(m) || !exact(m, ['id', 'kind', 'version', 'content', 'text', 'provisional', 'provenance']) || !text(m.id) || items.has(m.id) || m.kind !== 'conversation-history' || !text(m.version) || !text(m.content) || !text(m.text) || m.provisional !== false || !object(m.provenance)) throw Error('invalid region material')
       items.add(m.id)
       const c = JSON.parse(m.content), p = m.provenance
-      if (!object(c) || !exact(c, ['text', 'provisional', 'region', 'regionIndex']) || c.text !== m.text || c.region !== true || c.provisional !== false || !Number.isSafeInteger(c.regionIndex) || c.regionIndex < 0 || !exact(p, ['owner', 'observationId', 'sessionId', 'binding', 'sourceEvent', 'cursor', 'step', 'stage']) || p.owner !== 'observation' || !text(p.observationId) || !text(p.sessionId) || p.binding !== 1 || !text(p.sourceEvent) || !Number.isSafeInteger(p.cursor) || p.cursor < 1 || !Number.isSafeInteger(p.step) || p.step < 0 || p.stage !== 'event-hook') throw Error('invalid region content/provenance')
+      if (!object(c) || !exact(c, ['text', 'provisional', 'region', 'regionIndex', ...(Object.hasOwn(c, 'toolCallId') ? ['toolCallId'] : [])]) || (Object.hasOwn(c, 'toolCallId') && !text(c.toolCallId)) || c.text !== m.text || c.region !== true || c.provisional !== false || !Number.isSafeInteger(c.regionIndex) || c.regionIndex < 0 || !exact(p, ['owner', 'observationId', 'sessionId', 'binding', 'sourceEvent', 'cursor', 'step', 'stage']) || p.owner !== 'observation' || !text(p.observationId) || !text(p.sessionId) || p.binding !== 1 || !text(p.sourceEvent) || !Number.isSafeInteger(p.cursor) || p.cursor < 1 || !Number.isSafeInteger(p.step) || p.step < 0 || p.stage !== 'event-hook') throw Error('invalid region content/provenance')
     }
   }
   return value as RegionDataset

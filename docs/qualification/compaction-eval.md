@@ -1,294 +1,251 @@
-# Compaction-only evaluation — stages 1–2 and stage-3 preparation
+# Budget-gated, pinned, task-aware compaction (DEV only)
 
-Approved scope: option A (2026-11-11), offline implementation and synthetic DEV data;
-2026-11-12 option A rebuilds only DEV data/generator and related tests/docs, leaving stage-1 tooling unchanged.
-**Stage-3 preparation only is approved (option A, 2026-11-12). Real execution is NOT approved.
-No real model/classifier/provider calls were made.** Git/GitHub operations are separate from
-inference. The offline evaluator remains provider-free; the opt-in Pi-host runner below is
-separate and uses only the existing SDK development dependency. No new dependency is needed.
+Approved by user, 2026-11-12, option A: implement as one PR. **No real model,
+classifier or provider calls are authorized or were made for this redesign.**
+Git/GitHub operations, local tests, metadata-only resolution and deterministic
+stubs are not inference. Do not merge. Real measurement requires separate approval.
 
-## Purpose and method
+## Motivation and U1 runtime change
 
-Measure only task154's purpose-scoped between-region compaction: does it retain each item
-needed by the module purpose? This does **not** qualify final monitoring decisions, retrieval,
-rule enforcement, memory usefulness, jobs, parent effects or deployment readiness.
+Previously every region with >1 eligible item was classified. Keep/drop came from
+`evidenceRefs` at profile reference threshold 0.5. Supplied Jev 1.14 DEV results:
+original wording retained 42/89 needed items; revision 1 (purpose inlined per item)
+retained 89/89 but removed only 41/246 noise items. Needed p50 was 0.84, noise p50
+0.71. These are prior observations, **not measurements of this redesign**.
 
-Core `engine/region-compaction.ts` exports the pure `buildRegionCompactionTask`,
-`regionCompactionCandidates` and `applyRegionCompaction`. The runtime calls these exact helpers:
-question instructions/criteria, region references, scope/version hashes and original order/content
-are preserved. Non-region material and `[memo]`, `[state]`, `[omitted]` heads stay; <=1 eligible
-item skips dispatch; rejected compaction retains the full region. The parity test captures the
-runtime's actual JudgeTasks, including scope and version, and compares against the builder.
+Only single-module pipelines declaring `region.compact` change. The declaration
+binding in `monitoring-engine-runtime.ts` still maps the need to `compactRegion:
+true`; only U1/references currently declares it. Rule-steering and memory are eval
+purposes here, not newly compacting runtime modules. Normal reference decoding,
+final judgement, workers, retrieval and memory effects retain their behavior.
 
-`packages/eval/src/compaction.ts` accepts core's `JudgeBatchPort` (including an admitted model
-router's `judgeBatch`). It builds one task per region; only the compaction is called. The actual
-exported question instructions come from `modules/references/src`, `modules/rule-steering/src`
-and `modules/memory/src`, not a paraphrased evaluation prompt. No labels parameter is accepted
-by evaluation. Labels are joined after selection by the scorer. A test flips labels and checks
-that actual core model-host requests remain identical. The closed dataset schema rejects label
-fields in reference bodies as well as outer material records.
+## Defaults and configuration
 
-Goals are now fixed host configuration strings, identical across each purpose's 20 regions.
-Current requests/actions, record catalogs and completed reads appear only in region items.
-The [dataset README](../../packages/eval/data/compaction-dev/README.md#fixed-host-configuration-goals)
-records each exact string and its configuration/purpose sources. These are authored realistic
-DEV goals, not production defaults supplied by the module bindings.
+`RealtimeWatchModule.compactRegion` accepts false/absent (disabled), true (defaults),
+or `{ budgetBytes?, dropBelow?, pinNewest? }`. Unknown fields, invalid types,
+nonfinite numbers, noninteger byte/count limits, budget <1, pin count <0, and
+probability outside [0,1] are rejected at module admission.
 
-**Known runtime prompt limitation:** compaction supplies module instructions, event metadata,
-goal and region only; it does not add external policy references, `currentReferenceIds`, read
-ledger contents or memory source attestations. The dataset does not repair or augment that
-prompt. Tool results use core's real status-only rendering. It tests region-context relevance,
-not final U1/U6/memory accuracy. Fictional, agent-authored conversations and labels are DEV-only
-and require user review. Their correlations/base rates must not be generalized to production.
+| Setting | Default | Rationale |
+|---|---:|---|
+| budgetBytes | **8192** | Half the default total window/region admission limit, `maxBytes: 16384`, in `packages/core/src/engine/monitoring-core-realtime-material.ts:11`. This reserves room for pins/task and reduces repeated judgement input; it is a policy choice, not a measured optimum. |
+| dropBelow | **0.2** | Conservative P(needed) floor, separate from normal profile threshold 0.5. |
+| pinNewest | **2** | Two newest ordinary region items; tool pin propagation can retain more. |
 
-### Parent-review rebuild (2026-11-12)
+Budget counts **UTF-8 bytes of original reference content**, summed over non-pinned
+region items, not characters/tokens/serialized request size. Total kept bytes can
+exceed the budget because pins and non-region material are exempt. The material
+window's independent admission limits still apply. Custom window limits do not
+silently change the default compaction setting; configure budgetBytes explicitly.
 
-The e293b87 dataset leaked answers in explanatory tails, repeated noise lines and topic-swapped
-templates, mismatched speakers/tool pairs, and put event-specific information in `goal`. The
-rebuild uses natural same-topic near misses, varied wording/length/structure, coherent long
-incident narratives and correctly attributed user decisions versus assistant proposals.
-Latest user turns/assistant action statements establish the current `message_end` event.
-Checks cover forbidden hints, in-region duplicates, >=95% global uniqueness, fixed goals and
-call/result order plus target identity (before core discards result bodies). Separate labels,
-closed schemas, deterministic regeneration and label-isolation tests remain in place.
-The six-region user review sample is `/tmp/compaction-dev-review.md` (outside Git).
+## Single-source runtime/eval policy
 
-## Offline reproduction
+`packages/core/src/engine/region-compaction.ts` owns `planRegionCompaction`,
+`buildRegionCompactionTask` and `applyRegionCompaction`. Runtime and evaluator use
+these exact helpers. Tests compare captured runtime tasks to the builder, and
+compare evaluator tasks/selections to that same builder/application.
 
-From the repository root (Bun, frozen lockfile):
+1. Find conversation-history material with decoded `region: true`.
+2. Pin memo/state/omitted heads, latest user, current-event items and newest two
+   ordinary region items. Propagate any pin across its complete visible tool unit.
+   Pins are always retained verbatim and never sent as candidate references.
+3. Group a call and all its visible results as ONE candidate/question. Unit ID is
+   the first/call member ID. Map its probability back to all original member IDs.
+4. At non-pinned bytes **<= budgetBytes**, keep the region unchanged, make **no
+   compaction call**, record `region_within_budget`. The normal module judgement
+   can still run; this is not a global inference-disable switch.
+5. Otherwise put latest user and triggering action text in the explicit state
+   field `view.event.payload.task`. These texts are already redacted/bounded by the
+   window. Every unit question keeps revision-1's inlined module purpose and says
+   `Current task: see view.event.payload.task in state`. Source text is untrusted data.
+6. First drop units only if **P(needed) < dropBelow**; equality stays. If kept
+   non-pinned bytes still exceed budget, drop least-probable units first, ties
+   oldest-first in stable window order. Budget pressure can drop even confident
+   keeps: recall must be reported alongside savings, not assumed.
+7. Missing/malformed probabilities or any rejection keep the existing **full-region
+   fallback**. A fallback can be over budget and is reported as failure/noncompliance.
+
+Original output order/content/object identity is preserved. Legacy two-argument
+`applyRegionCompaction(materials, evidenceRefs)` remains available; runtime/eval
+use the policy form, which requires probabilities.
+
+### Current-event identification: capture is not ownership
+
+Region projection stamps historical lines with the capture frame's provenance.
+Pinning all matching observationIds would pin the entire region, incorrectly.
+
+- Non-region event-owned items use `provenance.observationId === frame.id`.
+- For message_end/turn_end, pin every line whose regionIndex is the newest
+  canonical message index: `truncatedHead + canonicalMessages.length - 1`.
+  Eval's bounded projection has no full snapshot and uses max visible regionIndex
+  for these events. No external/raw history is fetched.
+- Tool event `payload.toolCallId` pins the matching projected exchange. The window
+  adds, only for admitted compaction-enabled pipelines, a bounded SHA-256 `toolCallId` fact to call/result content, derived from
+  canonical call IDs. This supports parallel calls, multiple and nonadjacent
+  results without exposing raw IDs. Legacy regions use contiguous rendered pairs.
+  Only visible members can be grouped if the window omitted part of an exchange.
+- Latest-user/newest-item pins apply independently. Event-owned input user text
+  takes precedence over historical projected user text in the explicit task.
+
+### Additive decoding, unchanged normal threshold
+
+`decodeMonitoringJudgements` adds optional `referenceProbabilities` keyed by
+reference/unit ID for native tasks whose event ID ends in `:compact`. It includes
+all validated probabilities, even below the profile threshold. Existing mode,
+reason, confidence and threshold-derived evidenceRefs do not change. Ordinary
+native tasks, selection-disabled tasks and structured decoding retain their old
+shape. An adapter-local additive return type avoids modifying generated canonical
+contracts. Tests prove ordinary exact decode equality and the unchanged 0.5
+reference selection while making probability 0.2 available to compaction code.
+
+## Prior-art principles (sources, not dependencies)
+
+- [LiteLLM TypeSafe](https://github.com/BerriAI/litellm/blob/main/litellm/proxy/guardrails/guardrail_hooks/typesafe/typesafe.py):
+  last user as explicit task, deterministic system/latest-exchange protection,
+  conservative 0.2 relevance floor, whole tool exchanges.
+- [jev-compactor engine](https://github.com/edwardyen724-g/jev-compactor/blob/main/packages/jev-compactor/src/engine.ts),
+  [prepass](https://github.com/edwardyen724-g/jev-compactor/blob/main/packages/jev-compactor/src/prepass.ts),
+  [decision policy](https://github.com/edwardyen724-g/jev-compactor/blob/main/packages/jev-compactor/src/decide.ts),
+  [skeleton](https://github.com/edwardyen724-g/jev-compactor/blob/main/packages/jev-compactor/src/skeleton.ts):
+  goal in state, code pins/dedupe, whole skeleton, P(drop)>=0.7, least-certain
+  keeps under budget pressure, no classification below budget.
+- The supplied extractive-history review similarly favors budgeted ranking over
+  independent binary deletion. This implementation does not add global dedupe,
+  goal-path pinning or a whole skeleton. Those are prior-art differences, not
+  claimed features; existing window deduplication is unchanged. No new dependency.
+
+## DEV corpora, labels and limitations
+
+`--dataset dev|long-dev` is a closed runner choice; omission remains dev for
+compatibility. No arbitrary dataset path or holdout selector is accepted.
+
+Existing DEV is unchanged: 60 regions, 20/purpose, 335 items, 89 needed/246 noise.
+All 60 now skip compaction with defaults. New LONG DEV has 30 regions, 10/purpose,
+23 items/region, **690/690 unique rendered texts**. Each exceeds 8192 non-pinned
+bytes but fits the default 16384-byte, 32-source window. The parser now permits up
+to 32 items (previously 15) and an optional toolCallId; old files remain valid.
+
+Both corpora use fixed per-purpose goals, core regionLines rendering, correct
+speakers, paired calls/results and the same forbidden-answer-hint, no-local-duplicate
+and >=95% global uniqueness checks. Gold lives in a separate closed-schema labels
+file, never in task/state/reference content. Read errors do not imply successful reads.
+
+**Agent-authored, DEV-only, user review required.** LONG DEV composes a concrete
+scenario bank with varied operational observations, reusing investigative phrasing.
+Text uniqueness is not semantic diversity or independence. Most bulk is assistant
+investigation narration. Passing schema tests cannot establish gold correctness,
+representativeness or production confidence. See the LONG DEV README for review.
+
+Gold totals include pins; pinned is a subset, not a third disjoint label class.
+Byte ranges are per region, against the 8192-byte non-pinned budget.
+
+| Purpose | Needed | Not-needed | Pinned | Non-pinned bytes | Total bytes |
+|---|---:|---:|---:|---:|---:|
+| references | 40 | 190 | 20 | 13402–13929 | 13695–14222 |
+| rule-steering | 40 | 190 | 20 | 13299–13901 | 13593–14195 |
+| memory | 30 | 200 | 20 | 13382–13809 | 13688–14115 |
+
+Regenerate only LONG DEV: `bun packages/eval/src/compaction-generate-long-dev.ts`.
+Existing DEV generator/data and all holdout files are untouched.
+
+## Evaluation metrics and offline sweeps
+
+`evaluateCompaction` accepts core JudgeBatchPort, not labels; gold joins afterward
+in `scoreCompaction`. Existing overall/by-purpose metrics remain: needed recall,
+noise removal, item/byte reduction, all-dropped, failure fallback, latency p50/p95
+and USD. Binary rates have numerator/denominator and Wilson 95% intervals; empty
+denominators have null rate/interval. Byte weights have no Wilson interval.
+Synthetic clustered items do not establish independence or a confidence claim.
+
+Added per-row pinnedCount, candidateBytes, keptBytes (non-pinned), budgetBytes,
+budgetCompliant and skipped; aggregate pinnedCount, withinBudgetSkips and
+budgetCompliance (compliant/evaluated regions). Skips contribute no call or
+call-latency sample. Failures keep full input and count as attempted calls.
+
+Private item-probabilities.json logs unit IDs/probabilities, never source text.
+Legacy diagnosticThresholdSweep remains a candidate-only probability diagnostic,
+now named dropBelow as well; it excludes pins/no-call regions and ignores budget.
+**diagnosticBudgetSweep** replays the full shared policy over dropBelow 0.1–0.5,
+including units, pins, budget pressure and skips, mapping units to item labels.
+Neither sweep is a quality verdict. Provisional DEV recall target remains >=95%
+by point estimate, pending user confirmation; all-kept skip/fallback alone cannot
+qualify useful compaction.
+
+## Safe reproduction: zero inference
 
 ```sh
 bun install --frozen-lockfile
-bun run test
+bun test
 bun run typecheck
-bun packages/eval/src/compaction-cli.ts /tmp/compaction-report.json
+bun packages/eval/src/compaction-cli.ts --dataset dev /tmp/compaction-dev-offline.json
+bun packages/eval/src/compaction-cli.ts --dataset long-dev /tmp/compaction-long-offline.json
+bun hosts/pi/src/eval/compaction-run.ts --resolve-only --dataset dev --model openrouter/typesafe/jev-1.14
+bun hosts/pi/src/eval/compaction-run.ts --resolve-only --dataset long-dev --model openrouter/typesafe/jev-1.14
 ```
 
-The sibling CLI is **stub-only**, with zero cost and no network-capable binding. It selects
-alternating item positions, not semantic relevance. Its report is explicitly marked
-`deterministic-stub-NOT-model-quality`; passing/failing that report says nothing about a model.
-The optional positional argument is a report destination, not a provider/model selector.
+Offline CLI is provider-free, deterministic-stub-NOT-model-quality, network false,
+USD 0. Resolve-only uses static SDK registry with network refresh disabled and
+provider/type credential metadata only: no key retrieval, credential command,
+provider probe or classify. Reports stay outside Git.
 
-Regenerate only these DEV files (never a holdout) with:
+Resolved locally at USD 0.042/million input tokens, output/cache zero:
 
-```sh
-bun packages/eval/src/compaction-generate-dev.ts
-```
+| Dataset | Regions | Calls | Request bytes | Point tokens | Point USD | Upper tokens | Upper USD | Max/call USD |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| dev | 60 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| long-dev | 30 | 30 | 987434 | 246869 | 0.010368498 | 1110314 | 0.046633201 | 0.001568281 |
 
-The dataset has 60 regions (20/purpose), 5–13 items/region within the 5–15 bounds, 335 items
-total: 89 needed and 246 not-needed; 12 nothing-needed regions and 327/335 unique texts (97.61%). See the [dataset README](../../packages/eval/data/compaction-dev/README.md).
-The generator and gold are local dev artifacts; neither is passed to a model.
+Estimates, not observed costs. Point tokens = ceil(request UTF-8 bytes/4);
+reservation = one token per byte +4096 framing tokens per call. Wire size and
+reported usage must fit the bound and registry context window. Zero-call runs use
+a minimal positive internal meter-constructor sentinel, not a charge/reservation.
 
-## Metrics and denominators
+## Real runner guards (preserved)
 
-Report micro-averages overall and separately per purpose. Each rate carries its numerator and
-denominator. Zero denominator => null rate and null interval, never a fabricated perfect score.
+Real mode requires **separate user approval**, --approve-real-calls, exact
+--model openrouter/typesafe/jev-1.14 and explicit positive --max-calls/--max-usd/
+--max-wall-min within **120 / USD 1 / 30 minutes**. Unknown/duplicate flags,
+aliases, unsupported prices, other endpoints/models and unaffordable data are
+refused. OpenRouter is pinned TypeSafe Jev only, no other OpenRouter models.
+Stored Pi OpenRouter api_key/oauth login only; no CLI/env key overrides/custom
+model files. Application code never reads/logs keys.
 
-| Metric | Numerator / denominator |
-|---|---|
-| **Needed-item retention (recall; PRIMARY)** | needed items kept / all needed items |
-| Noise removal | not-needed items removed / all not-needed items |
-| Item size reduction | items removed / all input items |
-| Byte size reduction | UTF-8 bytes of reference `content` removed / all input reference-content bytes |
-| All-dropped | regions with no kept items / evaluated regions (including fallback/skips) |
-| Failure/fallback | rejected compaction calls / attempted compaction calls (skips excluded) |
-| Latency p50/p95 | nearest-rank percentiles of monotonic elapsed milliseconds, one observation per attempted region call, including failures |
-| Cost | sum of per-region cost deltas, USD; failed/unknown requests retain reserved maximum |
+Transport uses existing SDK classify and core request/decode, zero retries, one
+prepared POST to the exact endpoint, no redirects/fanout, serial admission,
+45-second per-call deadline and integer nano-dollar reservations. Invalid/missing
+usage, identity, settlement or cost stops admission and retains reservation. Abort
+is not proof of remote cancellation. No automatic retry/resume. Registry estimates
+are not invoice-verified costs or a provider-side billing guarantee.
 
-Wilson two-sided 95% intervals (z=1.959963984540054) accompany binary/item rates, as in P5
-decision #3. Byte reduction is a weighted size ratio, **not** independent Bernoulli trials:
-its interval is explicitly null, not a misleading per-byte Wilson claim. Item Wilson intervals
-also assume independence which synthetic items/regions do not establish. No model-quality
-confidence claim is made from this DEV corpus. Latency and cost have no Wilson interval.
+New private output outside Git (including worktree/symlink guards): directory 0700,
+files 0600. Manifest includes dataset choice/hash, model, estimates and caps;
+reserved/settled transport receipts precede/follow classify, with meter receipts,
+probabilities and score. No raw prompts/answers/headers/credentials/provider errors.
+Gold loads after evaluation. Incomplete run reports failure and exits nonzero.
 
-**Provisional pass line:** needed-item retention >=95%, evaluated as the point estimate,
-not the lower confidence bound. **User must confirm** the threshold and decision rule before
-stage 3. Report noise/size savings alongside retention; all-kept fallback can have perfect
-recall while providing no compaction. Report failures separately so fallback cannot hide them.
+## Verification for this implementation (no real calls)
 
-## Stage 1–2 verification
-
-- `bun test`: **876 passed, 0 failed**, 5,605 assertions across 63 files (25 added DEV-quality tests).
+- Full `bun test`: **925 passed, 0 failed**, 6686 assertions, 66 test files.
 - `bun run typecheck`: all **8** configured TypeScript project checks passed.
-- Offline dry run wrote `/tmp/cmpeval-dry-run.json`: 60 region rows, USD 0, network false.
-  Alternating-position stub retained 66/89 needed items; this is a mechanics check, not model evidence.
-- `git diff --check` passed. Finite pattern scans of changed sources, tests, docs and DEV data
-  found no private home paths, email addresses, common provider/cloud/private-key tokens,
-  bearer tokens or JWT-shaped secrets. This is not a universal secret detector.
-- No manifest/lockfile changes or `pi-fabric` manifest dependency; no holdout files changed.
+- Both datasets resolved through --resolve-only; both deterministic offline CLI
+  runs completed with USD 0 and network false. LONG DEV stub mechanics meet the
+  non-pinned budget in all 30 regions; these are not model-quality measurements.
+- Changed-line privacy scan and diff whitespace checks passed; no added private
+  home paths, common secret/token patterns or unrelated orchestration dependency.
+  Pattern scanning is not a universal secret detector.
+- No lockfile, existing DEV data/generator or holdout changes. No merge performed.
 
-## Disabled metered binding seam
+## Measurement plan — not approved by this PR
 
-`createMeteredCompactionBinding` in `compaction-meter.ts` is opt-in only (`enabled: true`),
-requires an exact explicit `modelId` (no default), and accepts only an injected transport.
-It bounds lifetime calls, reserved USD and monotonic wall time **before every dispatch**.
-Each call reserves its declared maximum USD and full per-call time within the remaining
-run budget; calls are serial. USD uses conservative integer nano-dollar accounting.
-Known actual costs release unused reservation. Failure/unknown billing retains the entire
-reservation, stops further dispatch, and records an uncertain receipt. No retries.
-Timeout aborts the signal, permanently stops admission and retains the physical slot until
-raw settlement; late completion cannot trigger more calls. Receipts contain exact model id,
-monotonic latency, cost/reservation and status. No raw source bodies, credentials or error
-messages are emitted by the meter.
-
-When using the seam, inject `binding.judgeBatch` into `evaluateCompaction` and pass
-`binding.costUsd` as its cost callback. Persist `binding.receipts()` alongside the score.
-The default evaluator cost callback is only appropriate for the zero-cost offline stub.
-
-**Proposed stage-3 sub-cap:** Jev <=120 calls / USD 1 / 30 minutes, contained within the
-P5 ceiling of 2,310 HTTP requests / USD 26 / 8 hours. The seam refuses configurations above
-these sub-caps. A logical `invoke` must be exactly one physical provider request: no hidden
-retries, redirects or internal fanout. Reserve any auxiliary activity within the larger P5
-budget; no unused capacity from one cap can override another. These are proposals, not a
-spending approval. Local fake-transport tests exercise opt-in, explicit identity, preflight
-call/USD/wall caps, concurrency refusal, latency/cost, abort, timeout, unknown billing and
-invalid receipts.
-
-## Stage-3 preparation: Pi-host transport and runner (no calls made)
-
-`hosts/pi/src/eval/compaction-transport.ts` implements the injected transport, leaving core and
-`packages/eval` Pi-free. It uses the SDK 1.5.0 `ModelRuntime.classify` path, not a guessed HTTP
-protocol: core `monitoringJudgeRequest(tasks, 'native-classifier')` -> SDK classify -> core
-`decodeMonitoringJudgements` (reference threshold 0.5). The SDK translates bool to wire noul.
-Frozen reference: composition commit `b725afa`, `.lazy-harness/scripts/monitoring-retrieval-poc.ts`
-(`createMeteredRequest` / `openMeteredClient`) and `monitoring-u6-evaluate.ts` (session runtime).
-The new transport injects fetch through the SDK option; it does not replace global fetch.
-
-### SDK findings (1.5.0, dependency-relative paths)
-
-Paths below are relative to the installed `@earendil-works/pi-ai` package unless noted.
-
-- `dist/models.js:672–691`, especially 685–688: catalog input/output/cache prices are divided
-  by **1,000,000** and multiplied by token usage. Thus registry input `0.042` means
-  **USD 0.042 per million input tokens**, not per request or per token.
-- `dist/types.d.ts:506–515`: `ClassifierResult.usage` is optional and is token usage priced at
-  catalog rates, when reported by the service. `dist/api/classifier-shared.js:79–98` converts
-  service `input_tokens`/`output_tokens` into Usage with cache counts zero and calculates cost.
-  The host recomputes USD from validated counts and registry pricing, ignoring `usage.cost`.
-  Missing/invalid/over-bound counts or malformed answers => uncertain, retain reservation,
-  permanently stop further dispatch. This is **not invoice-verified cost**. SDK parsing can
-  normalize malformed token fields to zero; the host requires positive input usage.
-- `dist/api/classifier-shared.js:36–74`: `postClassifierRequest` uses injected `options.fetch`,
-  with `maxRetries: options.maxRetries ?? 2` (line 68). The host explicitly supplies
-  `maxRetries: 0`, `maxRetryDelayMs: 1`; guarded fetch permits only one prepared POST to the
-  exact SDK endpoint and uses `redirect: 'error'`. There is no host retry/resume/fanout.
-  `dist/api/system-one-shared.js:111–154` makes one call to that helper and decodes answers.
-- Coding-agent `dist/core/model-runtime.js:80–119`: `create` with `modelsPath: null`,
-  `allowModelNetwork: false`, `refreshOnCreate: false` uses static models and does not refresh
-  catalogs. `classify` at 561–573 prepares SDK auth then delegates to the provider.
-- `dist/auth/types.d.ts:33–38,63–67`: `listCredentials` returns non-secret provider/type metadata
-  and must not execute credential commands. Resolve-only uses this, not key retrieval or an
-  authenticated availability probe. Real mode requires a stored Pi OpenRouter credential (`api_key`, or the
-  `oauth` credential written by `/login openrouter`; Pi auth storage refreshes it);
-  it blanks the ambient `OPENROUTER_API_KEY` option and does not accept CLI/env key overrides,
-  custom model files, aliases or alternate endpoints. Application code never reads/logs keys.
-
-### Admission, estimates and private records
-
-The runner refuses unknown/duplicate flags. Real mode requires **all** of:
-`--approve-real-calls`, exact `--model openrouter/typesafe/jev-1.14`, and explicit positive
-`--max-calls --max-usd --max-wall-min` within **120 / 1 / 30**. The approval flag is a mechanical
-interlock, not a substitute for later user approval. Dataset preflight must fit the caps.
-Per-call time is 45 seconds; per-call USD is the maximum conservative DEV request reservation.
-Serial lifetime accounting is the PR #18 meter; any uncertainty stops admission for the run.
-Subsequent rows retain full-region fallback and the report is marked incomplete (exit status 1).
-No automatic retry or resume is supported.
-
-The point token estimate is `ceil(UTF-8 request bytes / 4)` per region (heuristic, not a measured
-classifier tokenizer count). The reservation uses **one token per UTF-8 byte + 4,096 framing
-tokens**; SDK wire payload size is checked before fetch against that bound. Output pricing must
-be zero, cache pricing/counts must be zero, tiered/unknown pricing is rejected, and the bound
-must fit the registry context window. Actual usage exceeding the bound stops the run. These
-are conservative **local** reservations, not a proven provider-side billing limit.
-
-A single authorized resolve-only inspection (zero classify calls) reported:
-
-```json
-{"provider":"openrouter","id":"typesafe/jev-1.14","api":"typesafe-system-one","pricing":{"input":0.042,"output":0,"cacheRead":0,"cacheWrite":0},"costUnit":"USD per million tokens","contextWindow":262144,"authConfigured":"no","estimate":{"regions":60,"calls":60,"requestBytes":245773,"estimatedTokens":61466,"estimatedUsd":0.0025815720000000003,"upperTokens":491533,"upperUsd":0.020644409000000002,"perCallMaxUsd":0.000500724}}
-```
-
-All 60 regions have >1 candidate, so one repetition estimates **60 calls**, **61,466 tokens**,
-**USD 0.002581572**; conservative totals are **491,533 tokens / USD 0.020644409**. These are not
-observed inference costs. The meter reserves the largest per-call amount (USD 0.000500724)
-on each admission and releases unused reservation only on validated success.
-`authConfigured: no` meant no stored API-key metadata at that time; the only stored OpenRouter
-credential was an `oauth` login, which is now accepted (see the OpenRouter Jev-only rule below).
-It does not disclose, test, or imply anything about credentials in another runtime.
-
-Output defaults to a new private directory under the OS temporary directory (normally `/tmp`),
-mode 0700; explicit `--output-dir` must be new, absolute, outside Git, and have an existing
-parent. Files use mode 0600. Stdout contains only model metadata, estimates and scored aggregates,
-never per-call data or provider errors. Records:
-
-- `manifest.json`: exact identity/API/pricing, DEV dataset SHA-256, estimate, caps, start time,
-  limitations. No credentials or source bodies.
-- `transport-receipts.jsonl`: call number, request SHA-256/size, token bound, reserved/actual USD,
-  reported input/output counts when validated, physical attempt count, latency and status.
-  A `reserved` event is persisted before classify; a `settled` event closes it. A reservation
-  without settlement after process death remains uncertain: do not automatically resume.
-- `meter-receipts.json`: PR #18 call receipts, conservatively charged/reserved USD and uncertainty.
-- `report.json`: PR #18 scorer (all metrics, denominators, purpose groups and region result rows),
-  completion status and final meter state. Gold labels are loaded **after** evaluation, never
-  supplied to transport. Raw prompts/answers/headers/error messages/keys are not recorded.
-
-### Commands (from repository root)
-
-Safe metadata-only command (does not need spending approval; already run once for preparation):
-
-```sh
-bun hosts/pi/src/eval/compaction-run.ts --resolve-only --model openrouter/typesafe/jev-1.14
-```
-
-**DO NOT RUN the following until separately approved by the user**, with reviewed DEV labels,
-final retention rule, dataset/code freeze and one repetition confirmed. Configure the stored Pi
-OpenRouter credential through Pi's normal login flow out of band; never put a key in the command.
-Use a new output directory each time:
-
-```sh
-bun hosts/pi/src/eval/compaction-run.ts \
-  --approve-real-calls --model openrouter/typesafe/jev-1.14 \
-  --max-calls 120 --max-usd 1 --max-wall-min 30 \
-  --output-dir /tmp/compaction-stage3-approved-run
-```
-
-### Single-factor revision 1: per-item question carries the module purpose (user-confirmed 2026-11-12)
-
-First real run (jev-1.14, 60 calls, USD 0.004): needed-item retention 42/89 = 47.2%, provisional pass failed
-(references 6/36, rule-steering 28/33, memory 8/20; 20 regions with needed items dropped everything).
-Code review found the per-item keep question said "this module purpose" without the purpose text (it was only
-in the decision question) and pushed narrow selection ("Keep only directly relevant items"). Keep/drop is
-probability >= 0.5 per item, independent of the decision answer. The ONE changed factor is the per-item
-question text in `packages/core/src/engine/region-compaction.ts` (purpose inlined; true if it could matter,
-false only if clearly unrelated). Threshold 0.5, model, data and scorer are unchanged. This also changes the
-runtime prompt of modules declaring `region.compact` (U1). Diagnostic addition: per-item probabilities are
-saved by id to the private `item-probabilities.json`, and the report adds `diagnosticThresholdSweep`
-(0.3-0.7) computed offline; the sweep is never the pass verdict.
-### OpenRouter Jev-only rule (user-confirmed 2026-11-12)
-
-The OpenRouter route is used **only for TypeSafe Jev**; no other model is called through OpenRouter.
-`assertOpenRouterJevOnly` refuses any OpenRouter model other than a pinned `typesafe/jev-<major>.<minor>`
-(`~typesafe/jev-latest` and other aliases are refused) before any request is built, and `assertModel`
-further pins this runner to `openrouter/typesafe/jev-1.14`. The stored credential may be an `api_key` or
-the `oauth` credential from `/login openrouter`; environment variables remain refused.
-
-### Remaining execution gate and non-claims
-
-The seam's strong provider-side billing/physical-deadline contract is **not proven by this
-adapter**. AbortSignal/SDK timeout bounds local waiting and stops new dispatches, but does not
-prove remote cancellation or undo a charge. Neither registry pricing nor reported token usage
-is an invoice. Before enabling, the user must separately approve execution and resolve the
-provider-side/external budget-boundary requirement (or explicitly approve these limitations).
-Preparation does not claim model accuracy, production monitoring quality or deployment readiness.
-Fake-runtime/HTTP tests cover core parity, labels isolation, flags/caps, retry refusal,
-uncertain usage, fallback and receipts. No sealed holdout was read or changed. No shared
-checkout, other worktree, composition source or unrelated PR was modified.
-
-### Preparation verification
-
-- Full `bun test`: **891 passed, 0 failed**, **5,705 assertions** across **64 files**.
-  Includes 15 new fake-runtime/HTTP-only tests; no external inference in tests.
-- `bun run typecheck`: all **8** configured TypeScript projects passed.
-- One resolve-only run; **zero real classify/model/provider calls**.
-- Manifest and lockfile unchanged; no holdout or shared source changes.
-- `git diff --check` and added-line privacy scan passed (private home paths, common secret
-  patterns and unwanted harness dependencies). This finite scan is not a universal detector.
+1. User reviews LONG DEV text/gold/limitations and confirms recall/budget criteria.
+   Freeze code and dataset hashes.
+2. Obtain **separate explicit approval for one LONG DEV run**, including model,
+   repetition, dataset, call/USD/wall caps and new private output directory.
+   Inspect recall by purpose, pin contribution, budget ranking losses, compliance,
+   noise/byte savings, failures, probabilities and offline sweeps.
+3. Tune on DEV only if separately authorized; never inspect or modify a holdout.
+4. Obtain **another separate approval for a sealed holdout run** after freeze.
+   This PR intentionally adds no holdout selector; sealed access tooling must be
+   reviewed under that later approval. DEV scores are not holdout evidence.
+5. No measurement, test result or this implementation approval permits merging or
+   deployment. Existing holdouts and other evaluation worktrees remain untouched.

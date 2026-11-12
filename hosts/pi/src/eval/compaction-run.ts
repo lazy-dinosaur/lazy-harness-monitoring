@@ -2,7 +2,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, realpath
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { createHash } from 'node:crypto'
-import { regionCompactionCandidates } from '@lazy-harness/monitoring-core/engine/region-compaction.ts'
+import { planRegionCompaction } from '@lazy-harness/monitoring-core/engine/region-compaction.ts'
 import { parseRegionDataset, parseRegionLabels, type RegionDataset } from '../../../../packages/eval/src/compaction-dataset.ts'
 import { evaluateCompaction, regionTask, scoreCompaction } from '../../../../packages/eval/src/compaction.ts'
 import { createMeteredCompactionBinding } from '../../../../packages/eval/src/compaction-meter.ts'
@@ -14,7 +14,7 @@ export function parseRunArgs(args: string[]) {
     const k = args[i]!
     if (values.has(k) || flags.has(k)) throw Error('duplicate option')
     if (['--resolve-only', '--approve-real-calls'].includes(k)) flags.add(k)
-    else if (['--model', '--max-calls', '--max-usd', '--max-wall-min', '--output-dir'].includes(k)) {
+    else if (['--model', '--max-calls', '--max-usd', '--max-wall-min', '--output-dir', '--dataset'].includes(k)) {
       const v = args[++i]
       if (!v || v.startsWith('--')) throw Error('missing option value')
       values.set(k, v)
@@ -28,11 +28,13 @@ export function parseRunArgs(args: string[]) {
     if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 120 || !Number.isFinite(maxUsd) || maxUsd <= 0 || maxUsd > 1 || !Number.isFinite(maxWallMin) || maxWallMin <= 0 || maxWallMin > 30) throw Error('explicit caps required: calls <=120, USD <=1, minutes <=30')
   }
   if (!resolveOnly && !flags.has('--approve-real-calls')) throw Error('separate user approval and --approve-real-calls required')
-  return { resolveOnly, maxCalls, maxUsd, maxWallMs: maxWallMin * 60000, outputDir: values.get('--output-dir') }
+  const dataset = values.get('--dataset') ?? 'dev'
+  if (!['dev', 'long-dev'].includes(dataset)) throw Error('dataset must be dev or long-dev')
+  return { dataset, resolveOnly, maxCalls, maxUsd, maxWallMs: maxWallMin * 60000, outputDir: values.get('--output-dir') }
 }
 export function estimateDataset(dataset: RegionDataset, model: ClassifierModel) {
-  const estimates = dataset.regions.filter(r => regionCompactionCandidates(r.materials).length > 1).map(r => estimateRequest([regionTask(r)], model))
-  return { regions: dataset.regions.length, calls: estimates.length, requestBytes: estimates.reduce((n, e) => n + e.bytes, 0), estimatedTokens: estimates.reduce((n, e) => n + e.estimatedTokens, 0), estimatedUsd: estimates.reduce((n, e) => n + e.estimatedTokens * model.cost.input / 1e6, 0), upperTokens: estimates.reduce((n, e) => n + e.upperTokens, 0), upperUsd: estimates.reduce((n, e) => n + e.reservedUsd, 0), perCallMaxUsd: Math.max(...estimates.map(e => e.reservedUsd)) }
+  const estimates = dataset.regions.filter(r => !planRegionCompaction(r.materials, { frame: r.frame }).withinBudget).map(r => estimateRequest([regionTask(r)], model))
+  return { regions: dataset.regions.length, calls: estimates.length, requestBytes: estimates.reduce((n, e) => n + e.bytes, 0), estimatedTokens: estimates.reduce((n, e) => n + e.estimatedTokens, 0), estimatedUsd: estimates.reduce((n, e) => n + e.estimatedTokens * model.cost.input / 1e6, 0), upperTokens: estimates.reduce((n, e) => n + e.upperTokens, 0), upperUsd: estimates.reduce((n, e) => n + e.reservedUsd, 0), perCallMaxUsd: Math.max(1e-9, ...estimates.map(e => e.reservedUsd)) }
 }
 /** A new private directory only; refuse any Git ancestor, including worktrees and symlink escapes. */
 export function privateOutput(requested?: string) {
@@ -66,7 +68,7 @@ export const openRouterCredentialConfigured = (credentials: readonly { providerI
   credentials.some(c => c.providerId === 'openrouter' && (c.type === 'api_key' || c.type === 'oauth'))
 /** Diagnostic only (never the pass verdict): retention/noise removal recomputed offline from recorded per-item
  * probabilities at other thresholds. Unlabelled ids are ignored. */
-export function thresholdSweep(items: readonly { id: string; probability: number }[], needed: ReadonlyMap<string, boolean>, thresholds = [0.3, 0.4, 0.5, 0.6, 0.7]) {
+export function thresholdSweep(items: readonly { id: string; probability: number }[], needed: ReadonlyMap<string, boolean>, thresholds = [0.1, 0.2, 0.3, 0.4, 0.5]) {
   return thresholds.map(threshold => {
     let keptNeeded = 0, totalNeeded = 0, droppedNoise = 0, totalNoise = 0
     for (const it of items) {
@@ -74,8 +76,16 @@ export function thresholdSweep(items: readonly { id: string; probability: number
       const kept = it.probability >= threshold
       if (n) { totalNeeded++; if (kept) keptNeeded++ } else { totalNoise++; if (!kept) droppedNoise++ }
     }
-    return { threshold, neededItemRetention: { numerator: keptNeeded, denominator: totalNeeded }, noiseRemoval: { numerator: droppedNoise, denominator: totalNoise } }
+    return { threshold, dropBelow: threshold, neededItemRetention: { numerator: keptNeeded, denominator: totalNeeded }, noiseRemoval: { numerator: droppedNoise, denominator: totalNoise } }
   })
+}
+/** Full offline policy sweep: units, pins, budget pressure and no-call regions match runtime. */
+export async function budgetSweep(dataset: RegionDataset, labels: import('../../../../packages/eval/src/compaction-dataset.ts').RegionLabels, items: readonly ItemProbability[]) {
+  const probabilities = Object.fromEntries(items.map(it => [it.id, it.probability]))
+  return Promise.all([0.1, 0.2, 0.3, 0.4, 0.5].map(async dropBelow => {
+    const rows = await evaluateCompaction(dataset, async tasks => Object.fromEntries(tasks.map(t => [t.processorId, { mode: 'run', reason: 'offline recorded probability replay', evidenceRefs: [], referenceProbabilities: probabilities }])), new AbortController().signal, () => 0, { dropBelow })
+    return { dropBelow, ...scoreCompaction(dataset, labels, rows).overall }
+  }))
 }
 export async function run(args: string[]) {
   // Admission happens BEFORE loading the SDK, credentials, or dataset.
@@ -87,7 +97,7 @@ export async function run(args: string[]) {
   assertModel(model)
   // listCredentials returns only providerId/type, never reads a key into this application.
   const authConfigured = openRouterCredentialConfigured(await runtime.listCredentials())
-  const datasetText = await Bun.file(new URL('../../../../packages/eval/data/compaction-dev/regions.json', import.meta.url)).text()
+  const datasetText = await Bun.file(new URL(`../../../../packages/eval/data/compaction-${options.dataset}/regions.json`, import.meta.url)).text()
   const dataset = parseRegionDataset(JSON.parse(datasetText)), estimate = estimateDataset(dataset, model)
   console.log(JSON.stringify({ provider: model.provider, id: model.id, api: model.api, pricing: model.cost, costUnit: 'USD per million tokens', contextWindow: model.contextWindow, authConfigured: authConfigured ? 'yes' : 'no', estimate }))
   if (options.resolveOnly) return
@@ -104,11 +114,11 @@ export async function run(args: string[]) {
     try { return await binding.judgeBatch(tasks, signal) }
     finally { save('meter-receipts.json', binding.receipts()) }
   }, new AbortController().signal, binding.costUsd)
-  const labels = parseRegionLabels(await Bun.file(new URL('../../../../packages/eval/data/compaction-dev/labels.json', import.meta.url)).json(), dataset)
+  const labels = parseRegionLabels(await Bun.file(new URL(`../../../../packages/eval/data/compaction-${options.dataset}/labels.json`, import.meta.url)).json(), dataset)
   const report = { backend: MODEL, network: true, complete: results.every(r => !r.failed), meter: binding.status(), ...scoreCompaction(dataset, labels, results) }
   save('item-probabilities.json', probabilities)
-  const needed = new Map<string, boolean>(Object.values((await Bun.file(new URL('../../../../packages/eval/data/compaction-dev/labels.json', import.meta.url)).json()).labels as Record<string, Record<string, boolean>>).flatMap(r => Object.entries(r)))
-  Object.assign(report, { diagnosticThresholdSweep: thresholdSweep(probabilities, needed) })
+  const needed = new Map<string, boolean>(Object.values(labels.labels).flatMap(r => Object.entries(r)))
+  Object.assign(report, { diagnosticThresholdSweep: thresholdSweep(probabilities, needed), diagnosticBudgetSweep: await budgetSweep(dataset, labels, probabilities) })
   save('report.json', report)
   console.log(JSON.stringify({ complete: report.complete, calls: binding.status().calls, costUsd: binding.costUsd(), overall: report.overall }))
   if (!report.complete) process.exitCode = 1

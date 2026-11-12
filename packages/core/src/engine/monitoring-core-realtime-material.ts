@@ -56,6 +56,7 @@ export class RealtimeMaterialWindow {
   private readonly records: Array<Readonly<{ frameId: string | null; reason: string }>> = []
   // task154 between-region state (historyMode 'since-last'): survives per-intent resets, cleared with the scope.
   private regionStart?: number
+  private compactionUnits = false
   private intentInput = false
   private readonly regionAt = new Map<string, number>()
   private readonly regionIndex = new Map<string, number>()
@@ -89,6 +90,8 @@ export class RealtimeMaterialWindow {
     if (this.base.size > this.limits.maxSources || [...this.base.values()].reduce((n, r) => n + bytes(r.content), 0) > this.limits.maxBytes) throw new Error('excessive base material')
   }
 
+  /** Enabled only by an admitted compaction bridge; other modules keep their previous material shape. */
+  enableRegionCompactionUnits(): void { this.compactionUnits = true }
   accepts(kind: string): boolean { return this.options.allowedKinds.includes(kind) }
   start(scope: { sessionId: string; binding: number; afterCursor?: number }): boolean {
     if (!this.options.enabled) return false
@@ -184,19 +187,28 @@ export class RealtimeMaterialWindow {
         for (const [id, i] of [...this.regionIndex]) if (i < start) { const ref = this.materials.get(id); if (ref) { this.materials.delete(id); this.size -= bytes(ref.content) } this.regionIndex.delete(id) }
         for (let k = 0; k < 6; k++) this.removeLogical('conversation-history', `region-head:${k}`)
         this.removeLogical('conversation-history', 'region-omitted')
-        const region: Array<[number, string, number]> = []
-        for (let i = Math.max(start, base); i < total; i++) { const r = regionLines(msgs[i - base]); r.files.forEach(f => this.files.add(f)); r.lines.forEach((l, k) => region.push([i, l, k])) }
+        const region: Array<[number, string, number, string?]> = []
+        for (let i = Math.max(start, base); i < total; i++) {
+          const message = msgs[i - base], r = regionLines(message)
+          const calls = Array.isArray(message?.content) ? message.content.filter((b: any) => b?.type === 'toolCall') : []
+          let call = 0
+          r.files.forEach(f => this.files.add(f))
+          r.lines.forEach((l, k) => {
+            const id = l.startsWith('[tool call]') ? calls[call++]?.id : message?.role === 'toolResult' ? message.toolCallId : undefined
+            region.push([i, l, k, this.compactionUnits && typeof id === 'string' ? hash(id) : undefined])
+          })
+        }
         while (this.files.size > 20) this.files.delete(this.files.values().next().value!)
         const head = [...this.memo.map(t => `[memo] ${t}`), ...(this.files.size ? [`[state] files touched: ${clipText([...this.files].join(', '), 600)}`] : [])]
-        const size = (t: string) => bytes(JSON.stringify({ text: t, provisional: false, region: true, regionIndex: 0 })) + 24
+        const size = (t: string, toolCallId?: string) => bytes(JSON.stringify({ text: t, provisional: false, region: true, regionIndex: 0, ...(toolCallId ? { toolCallId } : {}) })) + 24
         let budget = this.limits.maxBytes - this.size - head.reduce((n, t) => n + size(t), 0) - 160, room = this.limits.maxSources - this.materials.size - head.length - 1
-        const keep: Array<[number, string, number]> = []
-        for (let j = region.length - 1; j >= 0 && keep.length < room; j--) { const n = size(region[j]![1]); if (n > this.limits.maxSourceBytes || n > budget) break; budget -= n; keep.unshift(region[j]!) }
+        const keep: Array<[number, string, number, string?]> = []
+        for (let j = region.length - 1; j >= 0 && keep.length < room; j--) { const n = size(region[j]![1], region[j]![3]); if (n > this.limits.maxSourceBytes || n > budget) break; budget -= n; keep.unshift(region[j]!) }
         const omitted = region.length - keep.length + Math.max(0, base - start)
         const before = ids.length
         head.forEach((t, k) => add('conversation-history', `region-head:${k}`, t, false, { region: true }))
         if (omitted > 0) add('conversation-history', 'region-omitted', `[omitted ${omitted} earlier items of this region]`, false, { region: true })
-        for (const [i, t, k] of keep) { const key = `region:${i}:${k}`; add('conversation-history', key, t, false, { region: true, regionIndex: i }); this.regionIndex.set(`material:${hash([this.scope, 'conversation-history', key])}`, i) }
+        for (const [i, t, k, toolCallId] of keep) { const key = `region:${i}:${k}`; add('conversation-history', key, t, false, { region: true, regionIndex: i, ...(toolCallId ? { toolCallId } : {}) }); this.regionIndex.set(`material:${hash([this.scope, 'conversation-history', key])}`, i) }
         const regionIds = ids.splice(before)
         // A frame with no own item (for example turn_end) is judged on its region; otherwise the region is context only.
         if (!ids.length) ids.push(...regionIds)

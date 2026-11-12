@@ -1,5 +1,5 @@
 import { monitoringWatchSupport } from '../sdk/trigger-points.ts'
-import { buildRegionCompactionTask, applyRegionCompaction, regionCompactionCandidates } from './region-compaction.ts'
+import { buildRegionCompactionTask, applyRegionCompaction, planRegionCompaction, compactionSettings, type RegionCompactionSettings } from './region-compaction.ts'
 import { createHash } from 'node:crypto'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
@@ -11,7 +11,7 @@ import { RealtimeMaterialWindow, type RealtimeMaterial, type MaterialWindowOptio
 import type { WindowProjectionSource } from './monitoring-core-source-projection.ts'
 import type { InputProjectionBatch } from './monitoring-core-input-projection.ts'
 
-export type RealtimeWatchModule = Readonly<{ id: string; watchEvents: readonly string[]; /** task154: conditional trigger points of this module (deterministic frame predicate); needs an independent per-module pipeline. */ trigger?: (frame: Readonly<{ sourceEvent: string; payload: unknown }>) => boolean; /** task154: purpose-scoped region compaction (declaration need `region.compact`): before the judgement, Jev keeps only the between-region items this module's purpose needs. */ compactRegion?: boolean; referenceKinds: readonly string[]; grants: Grants; question: JudgeQuestion; destination: string; includeCurrentMaterial?: boolean; /** Opt-in (declaration `needs` adapter `judge.view`): the packet carries the exact judge view so a module job can run its own follow-up Jev matching (Stage 2 decisions ②/③). */ includeJudgeView?: boolean }>
+export type RealtimeWatchModule = Readonly<{ id: string; watchEvents: readonly string[]; /** task154: conditional trigger points of this module (deterministic frame predicate); needs an independent per-module pipeline. */ trigger?: (frame: Readonly<{ sourceEvent: string; payload: unknown }>) => boolean; /** task154: purpose-scoped region compaction (declaration need `region.compact`): before the judgement, Jev keeps only the between-region items this module's purpose needs. */ compactRegion?: boolean | RegionCompactionSettings; referenceKinds: readonly string[]; grants: Grants; question: JudgeQuestion; destination: string; includeCurrentMaterial?: boolean; /** Opt-in (declaration `needs` adapter `judge.view`): the packet carries the exact judge view so a module job can run its own follow-up Jev matching (Stage 2 decisions ②/③). */ includeJudgeView?: boolean }>
 export type RealtimeInputProjection = Readonly<{
   evidenceId: string; contractId: string
   sourceVersion(id: string): string | undefined
@@ -82,7 +82,7 @@ export class RealtimeSelectionBridge {
     try {
       if (Object.keys(config.judgeProfiles ?? {}).some(id => !this.modules.some(m => m.id === id))) throw new Error('unknown module judge route')
       for (const module of this.modules) {
-        if (Object.keys(module).some(k => !['id', 'watchEvents', 'referenceKinds', 'grants', 'question', 'destination', 'includeCurrentMaterial', 'includeJudgeView', 'trigger', 'compactRegion'].includes(k)) || (module.compactRegion !== undefined && typeof module.compactRegion !== 'boolean') || (module.trigger !== undefined && typeof module.trigger !== 'function') || (module.includeCurrentMaterial !== undefined && typeof module.includeCurrentMaterial !== 'boolean') || !text(module.destination) || !Array.isArray(module.watchEvents) || !module.watchEvents.length || module.watchEvents.some((e: string) => !(observationEvents as readonly string[]).includes(e) || monitoringWatchSupport(e) !== 'watchable') || !Array.isArray(module.referenceKinds) || module.referenceKinds.some((k: string) => !options.window.accepts(k))) throw new Error('invalid module material declaration')
+        if (Object.keys(module).some(k => !['id', 'watchEvents', 'referenceKinds', 'grants', 'question', 'destination', 'includeCurrentMaterial', 'includeJudgeView', 'trigger', 'compactRegion'].includes(k)) || (module.compactRegion !== undefined && !compactionSettings(module.compactRegion)) || (module.trigger !== undefined && typeof module.trigger !== 'function') || (module.includeCurrentMaterial !== undefined && typeof module.includeCurrentMaterial !== 'boolean') || !text(module.destination) || !Array.isArray(module.watchEvents) || !module.watchEvents.length || module.watchEvents.some((e: string) => !(observationEvents as readonly string[]).includes(e) || monitoringWatchSupport(e) !== 'watchable') || !Array.isArray(module.referenceKinds) || module.referenceKinds.some((k: string) => !options.window.accepts(k))) throw new Error('invalid module material declaration')
         if (module.includeJudgeView !== undefined && typeof module.includeJudgeView !== 'boolean') throw new Error('invalid module judge-view request')
         const route = config.judgeProfiles?.[module.id] ?? config.defaultJudgeProfile
         if (!route) throw new Error('explicit classifier route required')
@@ -117,6 +117,7 @@ export class RealtimeSelectionBridge {
           },
         }, module.grants)
       }
+      if (this.modules.length === 1 && this.modules[0]!.compactRegion) options.window.enableRegionCompactionUnits()
       if (this.options.enabled) this.core.start()
     } catch { this.core.dispose(); this.models.dispose(); throw new Error('selection module/profile admission rejected') }
   }
@@ -183,15 +184,17 @@ export class RealtimeSelectionBridge {
     // single-module pipeline whose module declares `region.compact`, Jev first keeps only the between-region items THIS
     // module's purpose needs (verbatim; [memo]/[state]/[omitted] head lines always stay). A failed compaction keeps the
     // window's own newest-first region. Kept originals also feed the module memo.
-    let materials = snapshot.materials, compactTexts: string[] = []
-    const compactor = this.modules.length === 1 && this.modules[0]!.compactRegion === true ? this.modules[0]! : undefined
+    let materials: readonly RealtimeMaterial[] = snapshot.materials, compactTexts: string[] = []
+    const compactor = this.modules.length === 1 && !!this.modules[0]!.compactRegion ? this.modules[0]! : undefined
     if (compactor) {
-      const region = regionCompactionCandidates(materials)
-      if (region.length > 1) {
+      const policy = { frame: input.frame, settings: compactor.compactRegion }
+      const plan = planRegionCompaction(materials, policy)
+      if (plan.withinBudget) this.note(input, 'region_within_budget', compactor.id)
+      else {
         const task = buildRegionCompactionTask({ module: compactor, materials, key, request: this.requests, dependency: snapshot.dependency, frame: input.frame, goal: this.options.goal })
         try {
           const out = await this.models.judgeBatch([task], lease.signal)
-          const applied = applyRegionCompaction(materials, out[compactor.id]?.evidenceRefs ?? [])
+          const applied = applyRegionCompaction(materials, out[compactor.id]!, policy)
           materials = applied.materials
           compactTexts = applied.compactTexts
           this.note(input, 'region_compacted', compactor.id)

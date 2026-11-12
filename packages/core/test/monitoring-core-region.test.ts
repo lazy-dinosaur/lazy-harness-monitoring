@@ -96,17 +96,17 @@ describe('purpose-scoped region compaction (task154, model calls 0)', () => {
       const compact = String(task.view.event.id).endsWith(':compact')
       task.view.context.references.forEach((r: any, j: number) => { out.value.answers[`ref_0_${j}`].probability = compact ? (JSON.parse(r.content).text.includes('relevant') ? 0.95 : 0.05) : 0.05 })
       out.value.answers.decision_0.choice = compact ? 'run' : 'skip'; return out } }
-    const module: RealtimeWatchModule = { id: 'compact.mod', watchEvents: ['turn_end'], referenceKinds: ['conversation-history'], grants: { referenceKinds: ['conversation-history'], actions: ['monitoring.selected-material'] }, question: { instructions: 'Detect relevant work', criteria: { run: 'r', skip: 's', defer: 'd' } }, destination: 'sink', compactRegion: true }
+    const module: RealtimeWatchModule = { id: 'compact.mod', watchEvents: ['turn_end'], referenceKinds: ['conversation-history'], grants: { referenceKinds: ['conversation-history'], actions: ['monitoring.selected-material'] }, question: { instructions: 'Detect relevant work', criteria: { run: 'r', skip: 's', defer: 'd' } }, destination: 'sink', compactRegion: { budgetBytes: 200, pinNewest: 0 } }
     const set = createIndependentSelectionPipelines({ enabled: true, material: { allowedKinds: ['conversation-history'], historyMode: 'since-last' }, selection: { modules: [module], goal: 'g', modelConfig: config(), modelHost: f.host, isPermitted: () => true }, realtimeLimits: { jobTimeoutMs: 10000 } })
     const p = set.pipelines[0]!; p.window.start({ sessionId: 's', binding: 1 }); p.coordinator.start({ sessionId: 's', binding: 1 })
     cursor = 0
     try {
-      const fr = frame('turn_end', [user('noise one'), said('the relevant step'), said('noise two')])
+      const fr = frame('turn_end', [said('noise one'), said('the relevant step'), said('noise two'), user('Continue the work')])
       p.window.capture(fr, p.coordinator.getStatus().step); p.coordinator.accept(fr); await set.idle()
       expect(f.calls).toHaveLength(2)
       const judged = (f.calls[1]!.request.body as any).state.tasks[0].view.context.references.map((r: any) => JSON.parse(r.content).text)
-      expect(judged).toEqual(['[assistant] the relevant step'])
-      expect(p.window.regionStatus.memo).toEqual(['[assistant] the relevant step'])
+      expect(judged).toEqual(['[assistant] the relevant step', '[user] Continue the work'])
+      expect(p.window.regionStatus.memo).toEqual(['[assistant] the relevant step', '[user] Continue the work'])
     } finally { set.dispose(); await set.idle() }
   })
 })

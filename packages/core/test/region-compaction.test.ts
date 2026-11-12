@@ -14,9 +14,9 @@ test('per-item compaction question carries the module purpose (single-factor rev
 })
 for (const mode of ['keep', 'fail', 'single'] as const) test(`runtime compaction equals pure builder; ${mode}`, async () => {
   const models = scriptedModels(), window = new RealtimeMaterialWindow({ enabled: true, allowedKinds: ['conversation-history'], historyMode: 'since-last', metaEvents: ['turn_end'] })
-  const module = { id: 'test.compact', compactRegion: true, watchEvents: ['turn_end'], referenceKinds: ['conversation-history'], grants: { actions: ['monitoring.selected-material'], referenceKinds: ['conversation-history'] }, question, destination: 'test' }
+  const module = { id: 'test.compact', compactRegion: { budgetBytes: 1, pinNewest: 0 }, watchEvents: ['turn_end'], referenceKinds: ['conversation-history'], grants: { actions: ['monitoring.selected-material'], referenceKinds: ['conversation-history'] }, question, destination: 'test' }
   const bridge = new RealtimeSelectionBridge({ enabled: true, window, modules: [module], modelConfig: models.config, modelHost: models.host, goal: 'test', isPermitted: () => true })
-  const f = frame(1, 'turn_end'); (f.snapshot as any).canonicalMessages = [{ role: 'user', content: 'Need project evidence' }, ...(mode === 'single' ? [] : [{ role: 'assistant', content: 'Unrelated noise' }])]
+  const f = frame(1, 'turn_end'); (f.snapshot as any).canonicalMessages = [{ role: 'user', content: 'Need project evidence' }, ...(mode === 'single' ? [] : [{ role: 'assistant', content: 'Unrelated noise' }, { role: 'assistant', content: 'Current action' }])]
   window.start({ sessionId: f.sessionId, binding: f.binding }); window.capture(f, 0)
   const snapshot = window.snapshot(f.id, ['conversation-history'])
   const input = { frame: f, epoch: 1, step: 0, generation: 1 }, tasks: JudgeTask[] = []
@@ -25,7 +25,10 @@ for (const mode of ['keep', 'fail', 'single'] as const) test(`runtime compaction
   try {
     await bridge.prepare(input, { signal: new AbortController().signal, isCurrent: () => true }); await bridge.idle()
     const compact = tasks.filter(t => t.view.event.id.endsWith(':compact'))
-    if (mode === 'single') expect(compact).toHaveLength(0)
+    if (mode === 'single') {
+      expect(compact).toHaveLength(0)
+      expect(bridge.traces.some(r => r.status === 'region_within_budget')).toBe(true)
+    }
     else {
       expect(compact).toEqual([buildRegionCompactionTask({ module, materials: snapshot.materials, key: hash([f.sessionId, f.binding, 1, 1, f.id]), request: 1, dependency: snapshot.dependency, frame: f, goal: 'test' })])
       expect(bridge.traces.some(r => r.status === (mode === 'fail' ? 'region_compaction_failed' : 'region_compacted'))).toBe(true)

@@ -29,16 +29,18 @@ export function monitoringJudgeRequest(tasks: readonly JudgeTask[], kind: Monito
     tasks, outputSchema: JSON.parse(JSON.stringify(Type.Object({ decisions: Type.Array(item, { minItems: tasks.length, maxItems: tasks.length }) }, { additionalProperties: false })))
   }) })
 }
-export function decodeMonitoringJudgements(tasks: readonly JudgeTask[], profile: MonitoringBoundModelProfile, raw: unknown): Record<string, Decision> {
+/** Additive native compaction diagnostic; ordinary decisions retain their exact previous shape. */
+export type DecodedMonitoringDecision = Decision & { referenceProbabilities?: Readonly<Record<string, number>> }
+export function decodeMonitoringJudgements(tasks: readonly JudgeTask[], profile: MonitoringBoundModelProfile, raw: unknown): Record<string, DecodedMonitoringDecision> {
   let value: any
   try { value = plain(raw) } catch { return modelFailure('MODEL_OUTPUT', '/', 'Model output is not bounded JSON') }
-  const decisions: Array<[string, Decision]> = []
+  const decisions: Array<[string, DecodedMonitoringDecision]> = []
   if (profile.kind === 'native-classifier') {
     const props: Record<string, any> = {}
     tasks.forEach((t, i) => { props[`decision_${i}`] = Type.Object({ type: Type.Literal('choice'), choice: mode, confidence }, { additionalProperties: true }); if (t.question.selectReferences !== false) t.view.context.references.forEach((_r, j) => { props[`ref_${i}_${j}`] = Type.Object({ type: Type.Literal('bool'), probability: Type.Number({ minimum: 0, maximum: 1 }) }, { additionalProperties: true }) }) })
     if (!Value.Check(Type.Object({ stopReason: Type.Literal('stop'), answers: Type.Object(props, { additionalProperties: false }) }, { additionalProperties: true }), value)) modelFailure('MODEL_OUTPUT', '/', 'Missing or malformed native decision/reference result')
     const answers = value.answers as Record<string, { choice: Decision['mode']; confidence?: number; probability: number }>
-    tasks.forEach((t, i) => { const a = answers[`decision_${i}`], refs = t.question.selectReferences === false ? [] : t.view.context.references.filter((_r, j) => answers[`ref_${i}_${j}`].probability >= profile.referenceThreshold!); decisions.push([t.processorId, { mode: a.choice, reason: t.question.criteria[a.choice as Decision['mode']], evidenceRefs: [t.view.eventRef, ...refs.map(r => r.id)], ...(a.confidence === undefined ? {} : { confidence: a.confidence }) }]) })
+    tasks.forEach((t, i) => { const a = answers[`decision_${i}`], refs = t.question.selectReferences === false ? [] : t.view.context.references.filter((_r, j) => answers[`ref_${i}_${j}`].probability >= profile.referenceThreshold!); decisions.push([t.processorId, { mode: a.choice, reason: t.question.criteria[a.choice as Decision['mode']], evidenceRefs: [t.view.eventRef, ...refs.map(r => r.id)], ...(t.view.event.id.endsWith(':compact') && t.question.selectReferences !== false ? { referenceProbabilities: Object.fromEntries(t.view.context.references.map((r, j) => [r.id, answers[`ref_${i}_${j}`].probability])) } : {}), ...(a.confidence === undefined ? {} : { confidence: a.confidence }) }]) })
   } else {
     const schema = Type.Object({ decisions: Type.Array(Type.Object({ processorId: Type.String(), mode, referenceIds: Type.Array(Type.String(), { uniqueItems: true }), confidence }, { additionalProperties: false }), { minItems: tasks.length, maxItems: tasks.length }) }, { additionalProperties: false })
     if (!Value.Check(schema, value) || new Set(value.decisions.map((d: any) => d.processorId)).size !== tasks.length) modelFailure('MODEL_OUTPUT', '/', 'Malformed or incomplete structured decisions')

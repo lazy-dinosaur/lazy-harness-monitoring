@@ -84,38 +84,40 @@ test('label isolation through actual core model-host adapter: flip gold, wire un
   const models = scriptedModels(), router = createMonitoringModelRouter(models.config, models.host)
   try {
     const d = { ...dataset, regions: dataset.regions.slice(0, 1) }
-    const first = await evaluateCompaction(d, router.judgeBatch)
+    const first = await evaluateCompaction(d, router.judgeBatch, undefined, undefined, { budgetBytes: 1, pinNewest: 0 })
     const wire = structuredClone(models.calls)
+    expect(wire.length).toBeGreaterThan(0)
     const flipped = structuredClone(labels); for (const values of Object.values(flipped.labels)) for (const id of Object.keys(values)) values[id] = !values[id]
     scoreCompaction(d, flipped, first)
-    await evaluateCompaction(d, router.judgeBatch)
+    await evaluateCompaction(d, router.judgeBatch, undefined, undefined, { budgetBytes: 1, pinNewest: 0 })
     expect(models.calls.slice(1)).toEqual(wire)
     expect(JSON.stringify(wire)).not.toContain('needed"')
     expect(JSON.stringify(wire)).not.toContain('labels"')
     expect(JSON.stringify(wire)).not.toContain('provenance')
   } finally { router.dispose(); await router.idle() }
 })
-test('perfect selection scoring and explicit denominators', async () => {
+test('within-budget DEV skips calls and reports explicit denominators', async () => {
   const rows = await evaluateCompaction(dataset, async tasks => Object.fromEntries(tasks.map(t => [t.processorId, { mode: 'run', reason: 'oracle offline test', evidenceRefs: t.view.context.references.filter(r => Object.values(labels.labels).some(l => l[r.id])).map(r => r.id) }])))
   const s = scoreCompaction(dataset, labels, rows)
   expect(s.overall.neededItemRetention).toMatchObject({ numerator: 89, denominator: 89, rate: 1 })
-  expect(s.overall.noiseRemoval).toMatchObject({ numerator: 246, denominator: 246, rate: 1 })
+  expect(s.overall.noiseRemoval).toMatchObject({ numerator: 0, denominator: 246, rate: 0 })
   expect(s.overall.itemReduction.denominator).toBe(335)
-  expect(s.overall.allDropped).toMatchObject({ numerator: 12, denominator: 60 })
-  expect(s.overall.failureFallback.rate).toBe(0)
+  expect(s.overall.allDropped).toMatchObject({ numerator: 0, denominator: 60 })
+  expect(s.overall.failureFallback.rate).toBeNull()
+  expect(s.overall.withinBudgetSkips).toBe(60)
   expect(s.overall.costUsd).toBe(0)
   expect(s.overall.provisionalRetentionPass).toBe(true)
-  expect(s.overall.latencyMs.denominator).toBe(60)
+  expect(s.overall.latencyMs.denominator).toBe(0)
 })
 test('failure retains full region, all-dropped is distinct, and empty recall is undefined', async () => {
   const d = { ...dataset, regions: dataset.regions.slice(0, 1) }
-  const failed = await evaluateCompaction(d, async () => { throw Error('fake failure') })
+  const failed = await evaluateCompaction(d, async () => { throw Error('fake failure') }, undefined, undefined, { budgetBytes: 1, pinNewest: 0 })
   const s = scoreCompaction(d, labels, failed).overall
   expect(failed[0].keptIds).toHaveLength(d.regions[0].materials.length)
   expect(s.failureFallback.rate).toBe(1); expect(s.itemReduction.rate).toBe(0)
   expect(s.neededItemRetention.rate).toBeNull(); expect(s.neededItemRetention.ci95).toBeNull()
-  const empty = await evaluateCompaction(d, async tasks => ({ [tasks[0].processorId]: { mode: 'skip', reason: 'none', evidenceRefs: [] } }))
-  expect(scoreCompaction(d, labels, empty).overall.allDropped.rate).toBe(1)
+  const empty = await evaluateCompaction(d, async tasks => ({ [tasks[0].processorId]: { mode: 'skip', reason: 'none', evidenceRefs: [], referenceProbabilities: Object.fromEntries(tasks[0].view.context.references.map(r => [r.id, 0])) } }), undefined, undefined, { budgetBytes: 1, pinNewest: 0 })
+  expect(scoreCompaction(d, labels, empty).overall.allDropped.rate).toBe(0) // latest user/current event pins survive
 })
 test('Wilson known case and scorer rejects incomplete/duplicate results', async () => {
   const ci = wilson(95, 100).ci95!
