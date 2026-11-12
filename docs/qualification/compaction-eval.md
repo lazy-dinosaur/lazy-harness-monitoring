@@ -1,10 +1,11 @@
-# Compaction-only evaluation — stages 1–2
+# Compaction-only evaluation — stages 1–2 and stage-3 preparation
 
 Approved scope: option A (2026-11-11), offline implementation and synthetic DEV data;
 2026-11-12 option A rebuilds only DEV data/generator and related tests/docs, leaving stage-1 tooling unchanged.
-**Stage 3 is NOT authorized. No real model/provider/paid calls were made.** Git/GitHub operations
-for the branch and PR are separate from inference. No endpoint, credentials, provider SDK,
-Fabric dependency, automatic model discovery or real-network CLI mode is included.
+**Stage-3 preparation only is approved (option A, 2026-11-12). Real execution is NOT approved.
+No real model/classifier/provider calls were made.** Git/GitHub operations are separate from
+inference. The offline evaluator remains provider-free; the opt-in Pi-host runner below is
+separate and uses only the existing SDK development dependency. No new dependency is needed.
 
 ## Purpose and method
 
@@ -143,24 +144,129 @@ spending approval. Local fake-transport tests exercise opt-in, explicit identity
 call/USD/wall caps, concurrency refusal, latency/cost, abort, timeout, unknown billing and
 invalid receipts.
 
-### Exact remaining stage-3 gap (not implemented or run)
+## Stage-3 preparation: Pi-host transport and runner (no calls made)
 
-1. Obtain explicit stage-3 user approval, reviewed DEV labels, final retention decision rule,
-   dataset/version freeze, repetitions and caps (including per-call ceilings).
-2. Supply a reviewed **real Jev transport** implementing `MeteredTransport`, backed by the
-   core model-host/native-classifier protocol. The repo provides adapter/model-host abstractions,
-   not a confirmed Jev HTTP endpoint/auth/billing binding. Read-only inspection of the composition
-   checkout found neither the suggested old `monitoring-retrieval-poc.ts` nor its monitoring
-   directory, so no protocol/endpoint was guessed.
-3. Confirm endpoint and credential source out of band; provide credentials host-side only,
-   never in source, dataset, report, logs or Git. No credentials were fetched or tested here.
-4. User supplies the **exact provider/model id** and pricing. No default or guessed id exists.
-5. Prove provider-side maximum billing and physical deadline enforcement (or an external
-   kill/budget boundary) before enabling. An AbortSignal cannot guarantee remote cancellation,
-   and an injected transport can violate its declared cost: this seam detects violations but
-   cannot undo remote charges. Without those guarantees real execution must remain disabled.
-   Confirm no hidden HTTP retries/fanout, decode native typed answers through core adapters,
-   and qualify cost receipt/unknown-settlement accounting with the approved transport.
+`hosts/pi/src/eval/compaction-transport.ts` implements the injected transport, leaving core and
+`packages/eval` Pi-free. It uses the SDK 1.5.0 `ModelRuntime.classify` path, not a guessed HTTP
+protocol: core `monitoringJudgeRequest(tasks, 'native-classifier')` -> SDK classify -> core
+`decodeMonitoringJudgements` (reference threshold 0.5). The SDK translates bool to wire noul.
+Frozen reference: composition commit `b725afa`, `.lazy-harness/scripts/monitoring-retrieval-poc.ts`
+(`createMeteredRequest` / `openMeteredClient`) and `monitoring-u6-evaluate.ts` (session runtime).
+The new transport injects fetch through the SDK option; it does not replace global fetch.
 
-No stage-3 CLI is exposed. No sealed holdout file is read or changed by this harness. The
-shared checkout, other worktrees, composition repository and unrelated PRs are unchanged.
+### SDK findings (1.5.0, dependency-relative paths)
+
+Paths below are relative to the installed `@earendil-works/pi-ai` package unless noted.
+
+- `dist/models.js:672–691`, especially 685–688: catalog input/output/cache prices are divided
+  by **1,000,000** and multiplied by token usage. Thus registry input `0.042` means
+  **USD 0.042 per million input tokens**, not per request or per token.
+- `dist/types.d.ts:506–515`: `ClassifierResult.usage` is optional and is token usage priced at
+  catalog rates, when reported by the service. `dist/api/classifier-shared.js:79–98` converts
+  service `input_tokens`/`output_tokens` into Usage with cache counts zero and calculates cost.
+  The host recomputes USD from validated counts and registry pricing, ignoring `usage.cost`.
+  Missing/invalid/over-bound counts or malformed answers => uncertain, retain reservation,
+  permanently stop further dispatch. This is **not invoice-verified cost**. SDK parsing can
+  normalize malformed token fields to zero; the host requires positive input usage.
+- `dist/api/classifier-shared.js:36–74`: `postClassifierRequest` uses injected `options.fetch`,
+  with `maxRetries: options.maxRetries ?? 2` (line 68). The host explicitly supplies
+  `maxRetries: 0`, `maxRetryDelayMs: 1`; guarded fetch permits only one prepared POST to the
+  exact SDK endpoint and uses `redirect: 'error'`. There is no host retry/resume/fanout.
+  `dist/api/system-one-shared.js:111–154` makes one call to that helper and decodes answers.
+- Coding-agent `dist/core/model-runtime.js:80–119`: `create` with `modelsPath: null`,
+  `allowModelNetwork: false`, `refreshOnCreate: false` uses static models and does not refresh
+  catalogs. `classify` at 561–573 prepares SDK auth then delegates to the provider.
+- `dist/auth/types.d.ts:33–38,63–67`: `listCredentials` returns non-secret provider/type metadata
+  and must not execute credential commands. Resolve-only uses this, not key retrieval or an
+  authenticated availability probe. Real mode requires a stored Pi OpenRouter API-key credential;
+  it blanks the ambient `OPENROUTER_API_KEY` option and does not accept CLI/env key overrides,
+  custom model files, aliases or alternate endpoints. Application code never reads/logs keys.
+
+### Admission, estimates and private records
+
+The runner refuses unknown/duplicate flags. Real mode requires **all** of:
+`--approve-real-calls`, exact `--model openrouter/typesafe/jev-1.14`, and explicit positive
+`--max-calls --max-usd --max-wall-min` within **120 / 1 / 30**. The approval flag is a mechanical
+interlock, not a substitute for later user approval. Dataset preflight must fit the caps.
+Per-call time is 45 seconds; per-call USD is the maximum conservative DEV request reservation.
+Serial lifetime accounting is the PR #18 meter; any uncertainty stops admission for the run.
+Subsequent rows retain full-region fallback and the report is marked incomplete (exit status 1).
+No automatic retry or resume is supported.
+
+The point token estimate is `ceil(UTF-8 request bytes / 4)` per region (heuristic, not a measured
+classifier tokenizer count). The reservation uses **one token per UTF-8 byte + 4,096 framing
+tokens**; SDK wire payload size is checked before fetch against that bound. Output pricing must
+be zero, cache pricing/counts must be zero, tiered/unknown pricing is rejected, and the bound
+must fit the registry context window. Actual usage exceeding the bound stops the run. These
+are conservative **local** reservations, not a proven provider-side billing limit.
+
+A single authorized resolve-only inspection (zero classify calls) reported:
+
+```json
+{"provider":"openrouter","id":"typesafe/jev-1.14","api":"typesafe-system-one","pricing":{"input":0.042,"output":0,"cacheRead":0,"cacheWrite":0},"costUnit":"USD per million tokens","contextWindow":262144,"authConfigured":"no","estimate":{"regions":60,"calls":60,"requestBytes":245773,"estimatedTokens":61466,"estimatedUsd":0.0025815720000000003,"upperTokens":491533,"upperUsd":0.020644409000000002,"perCallMaxUsd":0.000500724}}
+```
+
+All 60 regions have >1 candidate, so one repetition estimates **60 calls**, **61,466 tokens**,
+**USD 0.002581572**; conservative totals are **491,533 tokens / USD 0.020644409**. These are not
+observed inference costs. The meter reserves the largest per-call amount (USD 0.000500724)
+on each admission and releases unused reservation only on validated success.
+`authConfigured: no` means no stored API-key metadata in this SDK's default Pi auth storage;
+it does not disclose, test, or imply anything about credentials in another runtime.
+
+Output defaults to a new private directory under the OS temporary directory (normally `/tmp`),
+mode 0700; explicit `--output-dir` must be new, absolute, outside Git, and have an existing
+parent. Files use mode 0600. Stdout contains only model metadata, estimates and scored aggregates,
+never per-call data or provider errors. Records:
+
+- `manifest.json`: exact identity/API/pricing, DEV dataset SHA-256, estimate, caps, start time,
+  limitations. No credentials or source bodies.
+- `transport-receipts.jsonl`: call number, request SHA-256/size, token bound, reserved/actual USD,
+  reported input/output counts when validated, physical attempt count, latency and status.
+  A `reserved` event is persisted before classify; a `settled` event closes it. A reservation
+  without settlement after process death remains uncertain: do not automatically resume.
+- `meter-receipts.json`: PR #18 call receipts, conservatively charged/reserved USD and uncertainty.
+- `report.json`: PR #18 scorer (all metrics, denominators, purpose groups and region result rows),
+  completion status and final meter state. Gold labels are loaded **after** evaluation, never
+  supplied to transport. Raw prompts/answers/headers/error messages/keys are not recorded.
+
+### Commands (from repository root)
+
+Safe metadata-only command (does not need spending approval; already run once for preparation):
+
+```sh
+bun hosts/pi/src/eval/compaction-run.ts --resolve-only --model openrouter/typesafe/jev-1.14
+```
+
+**DO NOT RUN the following until separately approved by the user**, with reviewed DEV labels,
+final retention rule, dataset/code freeze and one repetition confirmed. Configure the stored Pi
+OpenRouter credential through Pi's normal login flow out of band; never put a key in the command.
+Use a new output directory each time:
+
+```sh
+bun hosts/pi/src/eval/compaction-run.ts \
+  --approve-real-calls --model openrouter/typesafe/jev-1.14 \
+  --max-calls 120 --max-usd 1 --max-wall-min 30 \
+  --output-dir /tmp/compaction-stage3-approved-run
+```
+
+### Remaining execution gate and non-claims
+
+The seam's strong provider-side billing/physical-deadline contract is **not proven by this
+adapter**. AbortSignal/SDK timeout bounds local waiting and stops new dispatches, but does not
+prove remote cancellation or undo a charge. Neither registry pricing nor reported token usage
+is an invoice. Before enabling, the user must separately approve execution and resolve the
+provider-side/external budget-boundary requirement (or explicitly approve these limitations).
+Preparation does not claim model accuracy, production monitoring quality or deployment readiness.
+Fake-runtime/HTTP tests cover core parity, labels isolation, flags/caps, retry refusal,
+uncertain usage, fallback and receipts. No sealed holdout was read or changed. No shared
+checkout, other worktree, composition source or unrelated PR was modified.
+
+### Preparation verification
+
+- Full `bun test`: **891 passed, 0 failed**, **5,705 assertions** across **64 files**.
+  Includes 15 new fake-runtime/HTTP-only tests; no external inference in tests.
+- `bun run typecheck`: all **8** configured TypeScript projects passed.
+- One resolve-only run; **zero real classify/model/provider calls**.
+- Manifest and lockfile unchanged; no holdout or shared source changes.
+- `git diff --check` and added-line privacy scan passed (private home paths, common secret
+  patterns and unwanted harness dependencies). This finite scan is not a universal detector.
