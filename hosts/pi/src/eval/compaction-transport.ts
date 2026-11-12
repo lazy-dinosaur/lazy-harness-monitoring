@@ -9,7 +9,13 @@ export const MODEL = 'openrouter/typesafe/jev-1.14'
 export type ClassifierModel = Parameters<ModelRuntime['classify']>[0]
 export type ClassifierRuntime = Pick<ModelRuntime, 'classify'>
 export const decodingProfile = { kind: 'native-classifier', referenceThreshold: 0.5 } as MonitoringBoundModelProfile
+/** User rule (2026-11-12): the OpenRouter route is used ONLY for TypeSafe Jev, never for any other model.
+ * Pinned versions only (typesafe/jev-<major>.<minor>); `~`/latest aliases are refused. */
+export function assertOpenRouterJevOnly(model: Pick<ClassifierModel, 'provider' | 'id'>) {
+  if (model.provider === 'openrouter' && !/^typesafe\/jev-\d+\.\d+$/.test(model.id)) throw Error('OpenRouter is used only for pinned TypeSafe Jev models')
+}
 export function assertModel(model: ClassifierModel) {
+  assertOpenRouterJevOnly(model)
   if (`${model.provider}/${model.id}` !== MODEL || model.api !== 'typesafe-system-one' || model.type !== 'classifier' || model.baseUrl !== 'https://openrouter.ai/api/v1') throw Error('exact classifier/API/endpoint required')
   // This bounded classifier has no generated output charge. Unknown/tiered prices fail closed.
   if (!Number.isFinite(model.cost.input) || model.cost.input <= 0 || model.cost.output !== 0 || model.cost.cacheRead !== 0 || model.cost.cacheWrite !== 0 || model.cost.tiers?.length) throw Error('unsupported classifier pricing')

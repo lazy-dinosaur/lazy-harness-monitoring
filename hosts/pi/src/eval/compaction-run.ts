@@ -60,6 +60,10 @@ export function privateRecords(output: string) {
     },
   }
 }
+/** Stored Pi OpenRouter credential: an API key or the oauth credential from `/login openrouter` (refreshed by
+ * Pi auth storage). Environment variables are never a fallback. Only provider/type metadata is inspected. */
+export const openRouterCredentialConfigured = (credentials: readonly { providerId: string; type: string }[]) =>
+  credentials.some(c => c.providerId === 'openrouter' && (c.type === 'api_key' || c.type === 'oauth'))
 export async function run(args: string[]) {
   // Admission happens BEFORE loading the SDK, credentials, or dataset.
   const options = parseRunArgs(args)
@@ -69,12 +73,12 @@ export async function run(args: string[]) {
   if (!model) throw Error('exact classifier not in SDK registry')
   assertModel(model)
   // listCredentials returns only providerId/type, never reads a key into this application.
-  const authConfigured = (await runtime.listCredentials()).some(c => c.providerId === 'openrouter' && c.type === 'api_key')
+  const authConfigured = openRouterCredentialConfigured(await runtime.listCredentials())
   const datasetText = await Bun.file(new URL('../../../../packages/eval/data/compaction-dev/regions.json', import.meta.url)).text()
   const dataset = parseRegionDataset(JSON.parse(datasetText)), estimate = estimateDataset(dataset, model)
   console.log(JSON.stringify({ provider: model.provider, id: model.id, api: model.api, pricing: model.cost, costUnit: 'USD per million tokens', contextWindow: model.contextWindow, authConfigured: authConfigured ? 'yes' : 'no', estimate }))
   if (options.resolveOnly) return
-  if (!authConfigured) throw Error('stored Pi OpenRouter API-key credential required; no environment fallback')
+  if (!authConfigured) throw Error('stored Pi OpenRouter credential (api_key or oauth login) required; no environment fallback')
   if (estimate.calls > options.maxCalls || estimate.upperUsd > options.maxUsd || options.maxWallMs < 45000) throw Error('dataset exceeds approved caps')
   const output = privateOutput(options.outputDir)
   const { save, record } = privateRecords(output)

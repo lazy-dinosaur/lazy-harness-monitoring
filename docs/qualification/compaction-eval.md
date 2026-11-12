@@ -178,7 +178,8 @@ Paths below are relative to the installed `@earendil-works/pi-ai` package unless
   catalogs. `classify` at 561–573 prepares SDK auth then delegates to the provider.
 - `dist/auth/types.d.ts:33–38,63–67`: `listCredentials` returns non-secret provider/type metadata
   and must not execute credential commands. Resolve-only uses this, not key retrieval or an
-  authenticated availability probe. Real mode requires a stored Pi OpenRouter API-key credential;
+  authenticated availability probe. Real mode requires a stored Pi OpenRouter credential (`api_key`, or the
+  `oauth` credential written by `/login openrouter`; Pi auth storage refreshes it);
   it blanks the ambient `OPENROUTER_API_KEY` option and does not accept CLI/env key overrides,
   custom model files, aliases or alternate endpoints. Application code never reads/logs keys.
 
@@ -210,8 +211,9 @@ All 60 regions have >1 candidate, so one repetition estimates **60 calls**, **61
 **USD 0.002581572**; conservative totals are **491,533 tokens / USD 0.020644409**. These are not
 observed inference costs. The meter reserves the largest per-call amount (USD 0.000500724)
 on each admission and releases unused reservation only on validated success.
-`authConfigured: no` means no stored API-key metadata in this SDK's default Pi auth storage;
-it does not disclose, test, or imply anything about credentials in another runtime.
+`authConfigured: no` meant no stored API-key metadata at that time; the only stored OpenRouter
+credential was an `oauth` login, which is now accepted (see the OpenRouter Jev-only rule below).
+It does not disclose, test, or imply anything about credentials in another runtime.
 
 Output defaults to a new private directory under the OS temporary directory (normally `/tmp`),
 mode 0700; explicit `--output-dir` must be new, absolute, outside Git, and have an existing
@@ -248,6 +250,14 @@ bun hosts/pi/src/eval/compaction-run.ts \
   --max-calls 120 --max-usd 1 --max-wall-min 30 \
   --output-dir /tmp/compaction-stage3-approved-run
 ```
+
+### OpenRouter Jev-only rule (user-confirmed 2026-11-12)
+
+The OpenRouter route is used **only for TypeSafe Jev**; no other model is called through OpenRouter.
+`assertOpenRouterJevOnly` refuses any OpenRouter model other than a pinned `typesafe/jev-<major>.<minor>`
+(`~typesafe/jev-latest` and other aliases are refused) before any request is built, and `assertModel`
+further pins this runner to `openrouter/typesafe/jev-1.14`. The stored credential may be an `api_key` or
+the `oauth` credential from `/login openrouter`; environment variables remain refused.
 
 ### Remaining execution gate and non-claims
 
