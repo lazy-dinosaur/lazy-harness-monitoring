@@ -116,8 +116,9 @@ reference selection while making probability 0.2 available to compaction code.
 
 ## DEV corpora, labels and limitations
 
-`--dataset dev|long-dev` is a closed runner choice; omission remains dev for
-compatibility. No arbitrary dataset path or holdout selector is accepted.
+`--dataset dev|long-dev|holdout` is a closed runner choice; omission remains dev
+for compatibility. Only holdout accepts an external sealed directory; see the
+one-time procedure below. Repository DEV datasets remain unchanged.
 
 Existing DEV is unchanged: 60 regions, 20/purpose, 335 items, 89 needed/246 noise.
 All 60 now skip compaction with defaults. New LONG DEV has 30 regions, 10/purpose,
@@ -245,7 +246,113 @@ Gold loads after evaluation. Incomplete run reports failure and exits nonzero.
    noise/byte savings, failures, probabilities and offline sweeps.
 3. Tune on DEV only if separately authorized; never inspect or modify a holdout.
 4. Obtain **another separate approval for a sealed holdout run** after freeze.
-   This PR intentionally adds no holdout selector; sealed access tooling must be
-   reviewed under that later approval. DEV scores are not holdout evidence.
+   The runner-only follow-up below adds sealed access tooling, not authorization
+   to execute it. DEV scores are not holdout evidence.
 5. No measurement, test result or this implementation approval permits merging or
    deployment. Existing holdouts and other evaluation worktrees remain untouched.
+
+## One-time sealed holdout runner (runner support only; no calls made)
+
+Approved by the user on 2026-11-12, option A, to **prepare runner support only**.
+No model/provider calls, holdout opening, tuning, or merge was performed. Policy
+and question wording are frozen at **636b108**: budgetBytes **8192**, dropBelow
+**0.2**, pinNewest **2**. No file under packages/core or any repository corpus
+is changed. Do not use a holdout score to tune this frozen policy or select a
+threshold from the diagnostic offline sweeps.
+
+### Author/sealer preparation (separate from this implementation)
+
+1. Author a fresh holdout with `regions.json` and `labels.json` in an absolute
+   directory outside **every Git worktree**. Use the existing LONG DEV closed
+   schema, including its compatibility `schemaVersion: 1, split: "dev"` fields;
+   `--dataset holdout` identifies the run, not a new on-disk split schema. Keep
+   labels separate, region/item coverage exact, and labels boolean. Apply the
+   existing DEV text-quality and LONG DEV diversity validators while authoring.
+   Region content must fit the LONG DEV window (16384 total UTF-8 content bytes,
+   at most 32 sources, 8192 bytes per source); gold for tool units must agree.
+2. Optional labels-only metadata is a top-level sparse map:
+   `"noiseKind": { "region-id": { "noise-item-id": "same-topic" } }`.
+   Kinds are nonempty strings, allowed only for existing false-labelled items;
+   e.g. `same-topic` or `filler`. Missing metadata is reported as `unspecified`.
+   Do not put metadata in regions, source text, goals, or model-visible state.
+3. Seal exact file bytes and record the digest independently before operator
+   access. **Hash definition:** lowercase hexadecimal SHA-256 of the raw bytes
+   of `regions.json`, then exactly one LF byte (`0x0a`), then the raw bytes of
+   `labels.json`. Existing trailing newlines are included; no normalization,
+   trimming, JSON reserialization, filenames, or manifest is hashed. For example:
+
+   ```sh
+   HOLDOUT_DIR=/absolute/private/compaction-holdout
+   { cat "$HOLDOUT_DIR/regions.json"; printf '\n'; cat "$HOLDOUT_DIR/labels.json"; } | sha256sum
+   ```
+
+   This seal is an integrity commitment, not encryption or an authenticity
+   signature. Keep source/label contents private. The directory must allow the
+   operator to create `.opened`; treat the sealed files as immutable.
+
+### Operator procedure (commands documented, NOT executed here)
+
+Set `HOLDOUT_DIR` to that absolute directory, `EXPECT_SHA256` to the independently
+recorded 64-hex seal, and `OUTPUT_DIR` to a **new** absolute private output path
+outside Git. Resolve metadata/cost without opening the holdout:
+
+```sh
+bun hosts/pi/src/eval/compaction-run.ts --resolve-only \
+  --dataset holdout --holdout-dir "$HOLDOUT_DIR" --expect-sha256 "$EXPECT_SHA256" \
+  --model openrouter/typesafe/jev-1.14
+```
+
+Resolve-only reads/validates regions and estimates gated requests, but **never
+reads labels**, never creates output or `.opened`, and never classifies. Because
+it does not read labels, it cannot verify the combined seal: identity explicitly
+says `sealVerified: false`; that digest is an expected commitment, not validation.
+It refuses an already opened directory.
+
+Only after separate explicit user approval of the one run and caps:
+
+```sh
+bun hosts/pi/src/eval/compaction-run.ts --approve-real-calls \
+  --dataset holdout --holdout-dir "$HOLDOUT_DIR" --expect-sha256 "$EXPECT_SHA256" \
+  --model openrouter/typesafe/jev-1.14 \
+  --max-calls 120 --max-usd 1 --max-wall-min 30 --output-dir "$OUTPUT_DIR"
+```
+
+Real admission reads raw sealed bytes, verifies the combined hash **before any
+JSON parsing**, parses/validates regions, checks registry/auth/caps/output, then
+creates `.opened` with exclusive `wx`, mode 0600, timestamp, output directory and
+seal. Concurrent contenders cannot both dispatch. The marker is never removed,
+including on failure, crash, partial run, invalid gold, or zero-call skip. **No
+retry/resume, deletion of the marker, copy-to-rerun, or second measurement.**
+A refusal before marker creation (e.g. hash mismatch) makes no classifier call.
+
+Hashing necessarily reads labels as opaque bytes before calls. They are retained
+in a private byte snapshot, not parsed or exposed to the model. Only after all
+classifier calls finish does the runner parse gold/metadata with the existing
+label schema and LONG DEV diversity validator, and check tool-unit consistency.
+Thus malformed gold can consume the one-time open and fail reporting after calls;
+validate it during separate authoring, not with an operator rehearsal. Subsequent
+file mutations do not change the verified snapshot used to score.
+
+The shared outside-Git guard resolves symlinks for both directory and input files,
+and detects `.git` directories/files in ancestors (including linked worktrees).
+This is not protection against a malicious local user concurrently moving paths
+or deleting markers. Private output remains directory 0700/files 0600. Reports
+and manifests include `holdout: {sha256, regionCount, sealVerified}` and the frozen
+policy. `noiseRemovalByKind` counts actual kept/dropped items (including pins,
+skips, fallback and tool-unit expansion), with numerator/denominator, rate and
+Wilson interval. Kinds never enter requests. Existing caps, Jev-only/exact pinned
+model, approval, zero retries, receipts and full-region failure fallback remain.
+
+### Interpretation and verification
+
+**Solo-project limitation:** author and operator are agents under the same user,
+not independent people or organizations. Sealing and one-time admission reduce
+accidental reuse/leakage; they do not establish independent blinding, trustworthy
+gold, representative sampling, item independence, or production qualification.
+An opened holdout is spent even if results are inconclusive. No merge is implied.
+
+Runner-support validation uses temporary synthetic fixtures and fake runtime/HTTP
+only, never existing holdouts. `bun test`: 942 passed, 0 failed, 7160 assertions
+across 67 files; `bun run typecheck`: all 8 projects passed. Privacy/scope checks
+cover changed lines, unchanged lockfile/core/corpora, and whitespace. Pattern
+scanning is not a universal secret detector. No real measurement was made.
