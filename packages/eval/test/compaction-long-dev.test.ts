@@ -6,7 +6,68 @@ import { evaluateCompaction, regionTask, compactionQuestions, deterministicCompa
 import { buildRegionCompactionTask, applyRegionCompaction, planRegionCompaction, regionBytes } from '../../core/src/engine/region-compaction.ts'
 import { budgetSweep, estimateDataset, parseRunArgs } from '../../../hosts/pi/src/eval/compaction-run.ts'
 import { MODEL, type ClassifierModel } from '../../../hosts/pi/src/eval/compaction-transport.ts'
+import { validateLongDevDiversity, nearDuplicate, longDevMetrics } from './compaction-long-dev-quality.ts'
 const { dataset, labels } = generateCompactionLongDev()
+test('LONG DEV near-duplicate, position, count and role diversity', () => {
+  const m = validateLongDevDiversity(dataset, labels)
+  expect(m.localPairs).toBe(0)
+  expect(m.globalNearDuplicateRatio).toBeLessThanOrEqual(.05)
+  expect(m.distinctPatterns).toBeGreaterThanOrEqual(20)
+})
+test('near-duplicate guard rejects repeated sentences and 60-character prefixes despite unique suffixes', () => {
+  const oldOpening = 'The invoice export service writes a manifest before uploading CSV partitions.'
+  expect(nearDuplicate(`[assistant] ${oldOpening} Trace one.`, `[user] ${oldOpening} Trace two.`)).toBe(true)
+  const prefix = 'A deliberately long observation without punctuation that occupies more than sixty characters'
+  expect(nearDuplicate(`${prefix} finishes here.`, `${prefix} finishes elsewhere.`)).toBe(true)
+  expect(nearDuplicate('Batch 12 has observations. Alpha.', 'Batch 99 has observations. Beta.')).toBe(true)
+  const broken = structuredClone(dataset)
+  broken.regions[0]!.materials[1] = { ...broken.regions[0]!.materials[1]!, text: `${broken.regions[0]!.materials[0]!.text} Different suffix.` }
+  expect(() => validateLongDevDiversity(broken, labels)).toThrow('near-duplicate items within region')
+})
+test('global near-duplicate bound catches repeated prefixes across otherwise diverse regions', () => {
+  const broken = structuredClone(dataset)
+  for (const [i, r] of broken.regions.entries()) for (const [j, m] of r.materials.slice(0, 2).entries()) {
+    r.materials[j] = { ...m, text: `${j ? 'Second' : 'First'} repeated cross-region observation with a sufficiently long common prefix for the audit ${i} ${m.id}` }
+  }
+  expect(longDevMetrics(broken, labels).globalNearDuplicateRatio).toBeGreaterThan(.05)
+  expect(() => validateLongDevDiversity(broken, labels)).toThrow('global near-duplicate item ratio exceeds 5%')
+})
+test('position guard catches the original shared gold-index template', () => {
+  const fixed = structuredClone(labels)
+  for (const r of dataset.regions) for (const [i, m] of r.materials.entries()) fixed.labels[r.id]![m.id] = [5, 11, 12, 21].includes(i)
+  expect(() => validateLongDevDiversity(dataset, fixed)).toThrow('needed position patterns below 20')
+})
+test('role guards reject assistant-only gold and assistant-only noise', () => {
+  const assistantGold = structuredClone(labels)
+  for (const r of dataset.regions) for (const m of r.materials) if (!m.text.startsWith('[assistant]')) assistantGold.labels[r.id]![m.id] = false
+  // Restrict this assertion to role counts: a collapsed position distribution may fail first.
+  expect(longDevMetrics(dataset, assistantGold).perPurpose.references!.neededKinds).toEqual(['assistant'])
+  expect(() => validateLongDevDiversity(dataset, assistantGold)).toThrow()
+  const assistantNoise = structuredClone(labels)
+  for (const r of dataset.regions) for (const m of r.materials) assistantNoise.labels[r.id]![m.id] = !m.text.startsWith('[assistant]')
+  expect(longDevMetrics(dataset, assistantNoise).perPurpose.memory!.noiseKinds).toEqual(['assistant'])
+  expect(() => validateLongDevDiversity(dataset, assistantNoise)).toThrow()
+})
+test('short/long shapes overlap gold and noise in every purpose', () => {
+  for (const purpose of purposes) {
+    const regions = dataset.regions.filter(r => r.purpose === purpose)
+    const gold = regions.flatMap(r => r.materials.filter(m => labels.labels[r.id]![m.id]))
+    const noise = regions.flatMap(r => r.materials.filter(m => !labels.labels[r.id]![m.id]))
+    for (const group of [gold, noise]) {
+      expect(group.some(m => m.text.length >= 600)).toBe(true)
+      expect(group.some(m => m.text.length <= 300)).toBe(true)
+    }
+  }
+})
+test('every rendered exchange has adjacent matching IDs and one gold label for the whole unit', () => {
+  for (const r of dataset.regions) for (const [i, m] of r.materials.entries()) {
+    if (!m.text.startsWith('[tool call]')) continue
+    const next = r.materials[i + 1]!
+    expect(next.text.startsWith('[tool result:read]')).toBe(true)
+    expect(JSON.parse(m.content).toolCallId).toBe(JSON.parse(next.content).toolCallId)
+    expect(labels.labels[r.id]![m.id]).toBe(labels.labels[r.id]![next.id])
+  }
+})
 test('LONG DEV committed reproduction, separate labels, same quality checks and window bounds', async () => {
   expect(parseRegionDataset(await Bun.file(new URL('../data/compaction-long-dev/regions.json', import.meta.url)).json())).toEqual(dataset)
   expect(parseRegionLabels(await Bun.file(new URL('../data/compaction-long-dev/labels.json', import.meta.url)).json(), dataset)).toEqual(labels)
