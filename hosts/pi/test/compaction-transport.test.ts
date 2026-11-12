@@ -63,9 +63,9 @@ describe('Pi compaction transport: fake runtime and HTTP only', () => {
     expect(f.requests).toHaveLength(0)
   })
   test('missing usage stops meter after one call, keeps reservation and scores fallback', async () => {
-    const f = fixture('missing'), estimate = estimateDataset(dataset, model)
+    const f = fixture('missing'), estimate = { perCallMaxUsd: .01 }
     const meter = createMeteredCompactionBinding(f.transport, { enabled: true, modelId: MODEL, maxCalls: 120, maxUsd: 1, maxWallMs: 1800000, perCallMaxUsd: estimate.perCallMaxUsd, perCallMaxMs: 45000 })
-    const results = await evaluateCompaction(dataset, meter.judgeBatch, undefined, meter.costUsd)
+    const results = await evaluateCompaction(dataset, meter.judgeBatch, undefined, meter.costUsd, { budgetBytes: 1, pinNewest: 0 })
     expect(f.requests).toHaveLength(1); expect(meter.status().stopped).toBe(true)
     expect(meter.receipts()).toHaveLength(1); expect(meter.receipts()[0]!.status).toBe('uncertain')
     expect(meter.costUsd()).toBeGreaterThan(0)
@@ -76,7 +76,7 @@ describe('Pi compaction transport: fake runtime and HTTP only', () => {
     const before = dataset.regions.map(r => requestBody([regionTask(r)]))
     const flipped = structuredClone(labels)
     for (const row of Object.values(flipped.labels)) for (const k of Object.keys(row)) row[k] = !row[k]
-    scoreCompaction(dataset, flipped, dataset.regions.map(r => ({ regionId: r.id, purpose: r.purpose, keptIds: r.materials.map(m => m.id), skipped: false, failed: false, costUsd: 0, latencyMs: 0 })))
+    scoreCompaction(dataset, flipped, dataset.regions.map(r => ({ regionId: r.id, purpose: r.purpose, keptIds: r.materials.map(m => m.id), skipped: false, failed: false, costUsd: 0, latencyMs: 0, pinnedCount: 0, candidateBytes: 0, keptBytes: 0, budgetBytes: 8192, budgetCompliant: true })))
     expect(dataset.regions.map(r => requestBody([regionTask(r)]))).toEqual(before)
     expect(JSON.stringify(before)).not.toMatch(/"labels"|"needed"\s*:/)
     expect(before).toEqual(dataset.regions.map(r => monitoringJudgeRequest([regionTask(r)], 'native-classifier').body))
@@ -85,7 +85,7 @@ describe('Pi compaction transport: fake runtime and HTTP only', () => {
     const e = estimateRequest(tasks, model)
     expect(e.upperTokens).toBe(e.bytes + 4096)
     expect(e.reservedUsd).toBeGreaterThanOrEqual(e.upperTokens * .042 / 1e6)
-    expect(estimateDataset(dataset, model).calls).toBe(60)
+    expect(estimateDataset(dataset, model).calls).toBe(0)
     expect(() => estimateRequest(tasks, { ...model, contextWindow: 1 })).toThrow()
     expect(() => estimateRequest(tasks, { ...model, cost: { ...model.cost, output: 1 } })).toThrow()
   })
@@ -118,7 +118,7 @@ describe('runner admission and private receipts', () => {
   })
   test('threshold sweep is diagnostic and counts only labelled items', () => {
     const s = thresholdSweep([{ id: 'a', probability: .45 }, { id: 'b', probability: .2 }, { id: 'c', probability: .9 }, { id: 'x', probability: .9 }], new Map([['a', true], ['b', false], ['c', false]]), [0.4, 0.5])
-    expect(s).toEqual([{ threshold: .4, neededItemRetention: { numerator: 1, denominator: 1 }, noiseRemoval: { numerator: 1, denominator: 2 } }, { threshold: .5, neededItemRetention: { numerator: 0, denominator: 1 }, noiseRemoval: { numerator: 1, denominator: 2 } }])
+    expect(s).toEqual([{ threshold: .4, dropBelow: .4, neededItemRetention: { numerator: 1, denominator: 1 }, noiseRemoval: { numerator: 1, denominator: 2 } }, { threshold: .5, dropBelow: .5, neededItemRetention: { numerator: 0, denominator: 1 }, noiseRemoval: { numerator: 1, denominator: 2 } }])
   })
   test('resolve-only is explicit and cannot imply approval', () => {
     expect(parseRunArgs(['--resolve-only', '--model', MODEL]).resolveOnly).toBe(true)
