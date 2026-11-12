@@ -251,6 +251,18 @@ bun hosts/pi/src/eval/compaction-run.ts \
   --output-dir /tmp/compaction-stage3-approved-run
 ```
 
+### Single-factor revision 1: per-item question carries the module purpose (user-confirmed 2026-11-12)
+
+First real run (jev-1.14, 60 calls, USD 0.004): needed-item retention 42/89 = 47.2%, provisional pass failed
+(references 6/36, rule-steering 28/33, memory 8/20; 20 regions with needed items dropped everything).
+Code review found the per-item keep question said "this module purpose" without the purpose text (it was only
+in the decision question) and pushed narrow selection ("Keep only directly relevant items"). Keep/drop is
+probability >= 0.5 per item, independent of the decision answer. The ONE changed factor is the per-item
+question text in `packages/core/src/engine/region-compaction.ts` (purpose inlined; true if it could matter,
+false only if clearly unrelated). Threshold 0.5, model, data and scorer are unchanged. This also changes the
+runtime prompt of modules declaring `region.compact` (U1). Diagnostic addition: per-item probabilities are
+saved by id to the private `item-probabilities.json`, and the report adds `diagnosticThresholdSweep`
+(0.3-0.7) computed offline; the sweep is never the pass verdict.
 ### OpenRouter Jev-only rule (user-confirmed 2026-11-12)
 
 The OpenRouter route is used **only for TypeSafe Jev**; no other model is called through OpenRouter.

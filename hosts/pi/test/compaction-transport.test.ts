@@ -3,7 +3,7 @@ import { statSync, rmSync, mkdtempSync, readFileSync, existsSync } from 'node:fs
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { MODEL, assertModel, assertOpenRouterJevOnly, createPiCompactionTransport, decodingProfile, estimateRequest, requestBody, type ClassifierModel, type ClassifierRuntime, type TransportReceipt } from '../src/eval/compaction-transport.ts'
-import { parseRunArgs, estimateDataset, privateOutput, privateRecords, run, openRouterCredentialConfigured } from '../src/eval/compaction-run.ts'
+import { parseRunArgs, estimateDataset, privateOutput, privateRecords, run, openRouterCredentialConfigured, thresholdSweep } from '../src/eval/compaction-run.ts'
 import { parseRegionDataset, parseRegionLabels } from '../../../packages/eval/src/compaction-dataset.ts'
 import { regionTask, evaluateCompaction, scoreCompaction } from '../../../packages/eval/src/compaction.ts'
 import { createMeteredCompactionBinding } from '../../../packages/eval/src/compaction-meter.ts'
@@ -15,7 +15,7 @@ const tasks = [regionTask(dataset.regions[0]!)]
 const invokeInput = () => ({ modelId: MODEL, tasks, signal: new AbortController().signal, maxUsd: .01, deadlineMs: performance.now() + 5000 })
 const args = ['--approve-real-calls', '--model', MODEL, '--max-calls', '120', '--max-usd', '1', '--max-wall-min', '30']
 function fixture(mode = 'ok') {
-  const requests: unknown[] = [], options: any[] = [], receipts: TransportReceipt[] = [], http: RequestInit[] = []
+  const requests: unknown[] = [], options: any[] = [], receipts: TransportReceipt[] = [], http: RequestInit[] = [], probs: unknown[] = []
   const fakeHttp = Object.assign(async (_url: any, init: any) => { http.push(init); return new Response('{}') }, { preconnect() {} }) as unknown as typeof fetch
   const runtime: ClassifierRuntime = { async classify(m, body, o) {
     requests.push(structuredClone(body)); options.push(o)
@@ -26,8 +26,8 @@ function fixture(mode = 'ok') {
     if (mode === 'throw') throw Error('synthetic failure')
     return { api: m.api, provider: m.provider, model: m.id, timestamp: 0, stopReason: mode === 'error' ? 'error' : 'stop', answers: Object.fromEntries(Object.entries(body.questions).map(([k, q]) => [k, q.type === 'choice' ? { type: 'choice', choice: 'run', confidence: .9, probabilities: { run: .9, skip: .1 } } : { type: 'bool', probability: .8 }])), ...(mode === 'missing' ? {} : { usage: { input: mode === 'excess' ? 1000000 : 100, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: mode === 'excess' ? 1000000 : 100, cost: { input: 999, output: 0, cacheRead: 0, cacheWrite: 0, total: 999 } } }) }
   } }
-  const transport = createPiCompactionTransport(runtime, model, r => receipts.push({ ...r }), fakeHttp)
-  return { transport, requests, options, receipts, http }
+  const transport = createPiCompactionTransport(runtime, model, r => receipts.push({ ...r }), fakeHttp, p => { probs.push(...p) })
+  return { transport, requests, options, receipts, http, probs }
 }
 describe('Pi compaction transport: fake runtime and HTTP only', () => {
   test('core native request and decoding parity, catalog usage pricing, safe receipt', async () => {
@@ -43,6 +43,11 @@ describe('Pi compaction transport: fake runtime and HTTP only', () => {
     expect(f.receipts[0]!.requestSha256).toMatch(/^[a-f0-9]{64}$/)
     expect(JSON.stringify(f.receipts)).not.toContain('questions')
     expect(JSON.stringify(f.receipts)).not.toContain(dataset.regions[0]!.goal)
+  })
+  test('records per-item probabilities by id only, for offline threshold diagnostics', async () => {
+    const f = fixture(); await f.transport.invoke(invokeInput())
+    expect(f.probs).toEqual(tasks[0]!.view.context.references.map(r => ({ processorId: tasks[0]!.processorId, id: r.id, probability: .8 })))
+    expect(JSON.stringify(f.probs)).not.toContain(dataset.regions[0]!.goal)
   })
   for (const mode of ['missing', 'throw', 'error', 'retry', 'oversize', 'excess']) test(`${mode}: uncertain receipt, no retry and permanent stop`, async () => {
     const f = fixture(mode)
@@ -110,6 +115,10 @@ describe('runner admission and private receipts', () => {
     expect(openRouterCredentialConfigured([])).toBe(false)
     expect(openRouterCredentialConfigured([{ providerId: 'typesafe', type: 'api_key' }, { providerId: 'openai', type: 'oauth' }])).toBe(false)
     expect(openRouterCredentialConfigured([{ providerId: 'openrouter', type: 'env' }])).toBe(false)
+  })
+  test('threshold sweep is diagnostic and counts only labelled items', () => {
+    const s = thresholdSweep([{ id: 'a', probability: .45 }, { id: 'b', probability: .2 }, { id: 'c', probability: .9 }, { id: 'x', probability: .9 }], new Map([['a', true], ['b', false], ['c', false]]), [0.4, 0.5])
+    expect(s).toEqual([{ threshold: .4, neededItemRetention: { numerator: 1, denominator: 1 }, noiseRemoval: { numerator: 1, denominator: 2 } }, { threshold: .5, neededItemRetention: { numerator: 0, denominator: 1 }, noiseRemoval: { numerator: 1, denominator: 2 } }])
   })
   test('resolve-only is explicit and cannot imply approval', () => {
     expect(parseRunArgs(['--resolve-only', '--model', MODEL]).resolveOnly).toBe(true)

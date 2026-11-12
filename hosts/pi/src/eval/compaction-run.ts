@@ -6,7 +6,7 @@ import { regionCompactionCandidates } from '@lazy-harness/monitoring-core/engine
 import { parseRegionDataset, parseRegionLabels, type RegionDataset } from '../../../../packages/eval/src/compaction-dataset.ts'
 import { evaluateCompaction, regionTask, scoreCompaction } from '../../../../packages/eval/src/compaction.ts'
 import { createMeteredCompactionBinding } from '../../../../packages/eval/src/compaction-meter.ts'
-import { MODEL, assertModel, createPiCompactionTransport, estimateRequest, type ClassifierModel } from './compaction-transport.ts'
+import { MODEL, assertModel, createPiCompactionTransport, estimateRequest, type ClassifierModel, type ItemProbability } from './compaction-transport.ts'
 
 export function parseRunArgs(args: string[]) {
   const values = new Map<string, string>(), flags = new Set<string>()
@@ -52,7 +52,7 @@ export function privateOutput(requested?: string) {
 }
 export function privateRecords(output: string) {
   return {
-    save(name: 'manifest.json' | 'meter-receipts.json' | 'report.json', value: unknown) {
+    save(name: 'manifest.json' | 'meter-receipts.json' | 'report.json' | 'item-probabilities.json', value: unknown) {
       writeFileSync(join(output, name), JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })
     },
     record(receipt: import('./compaction-transport.ts').TransportReceipt) {
@@ -64,6 +64,19 @@ export function privateRecords(output: string) {
  * Pi auth storage). Environment variables are never a fallback. Only provider/type metadata is inspected. */
 export const openRouterCredentialConfigured = (credentials: readonly { providerId: string; type: string }[]) =>
   credentials.some(c => c.providerId === 'openrouter' && (c.type === 'api_key' || c.type === 'oauth'))
+/** Diagnostic only (never the pass verdict): retention/noise removal recomputed offline from recorded per-item
+ * probabilities at other thresholds. Unlabelled ids are ignored. */
+export function thresholdSweep(items: readonly { id: string; probability: number }[], needed: ReadonlyMap<string, boolean>, thresholds = [0.3, 0.4, 0.5, 0.6, 0.7]) {
+  return thresholds.map(threshold => {
+    let keptNeeded = 0, totalNeeded = 0, droppedNoise = 0, totalNoise = 0
+    for (const it of items) {
+      const n = needed.get(it.id); if (n === undefined) continue
+      const kept = it.probability >= threshold
+      if (n) { totalNeeded++; if (kept) keptNeeded++ } else { totalNoise++; if (!kept) droppedNoise++ }
+    }
+    return { threshold, neededItemRetention: { numerator: keptNeeded, denominator: totalNeeded }, noiseRemoval: { numerator: droppedNoise, denominator: totalNoise } }
+  })
+}
 export async function run(args: string[]) {
   // Admission happens BEFORE loading the SDK, credentials, or dataset.
   const options = parseRunArgs(args)
@@ -83,7 +96,8 @@ export async function run(args: string[]) {
   const output = privateOutput(options.outputDir)
   const { save, record } = privateRecords(output)
   save('manifest.json', { schemaVersion: 1, modelId: MODEL, api: model.api, pricing: model.cost, datasetSha256: createHash('sha256').update(datasetText).digest('hex'), estimate, caps: options, startedAt: new Date().toISOString(), limitations: ['local reservations, not invoice-verified cost', 'abort is not remote cancellation', 'DEV compaction only, not monitoring quality'] })
-  const transport = createPiCompactionTransport(runtime, model, record)
+  const probabilities: ItemProbability[] = []
+  const transport = createPiCompactionTransport(runtime, model, record, globalThis.fetch, p => { probabilities.push(...p) })
   const binding = createMeteredCompactionBinding(transport, { enabled: true, modelId: MODEL, maxCalls: options.maxCalls, maxUsd: options.maxUsd, maxWallMs: options.maxWallMs, perCallMaxUsd: estimate.perCallMaxUsd, perCallMaxMs: 45000 })
   // Preserve the scorer's full-region fallback; a stopped meter refuses all subsequent dispatches.
   const results = await evaluateCompaction(dataset, async (tasks, signal) => {
@@ -92,6 +106,9 @@ export async function run(args: string[]) {
   }, new AbortController().signal, binding.costUsd)
   const labels = parseRegionLabels(await Bun.file(new URL('../../../../packages/eval/data/compaction-dev/labels.json', import.meta.url)).json(), dataset)
   const report = { backend: MODEL, network: true, complete: results.every(r => !r.failed), meter: binding.status(), ...scoreCompaction(dataset, labels, results) }
+  save('item-probabilities.json', probabilities)
+  const needed = new Map<string, boolean>(Object.values((await Bun.file(new URL('../../../../packages/eval/data/compaction-dev/labels.json', import.meta.url)).json()).labels as Record<string, Record<string, boolean>>).flatMap(r => Object.entries(r)))
+  Object.assign(report, { diagnosticThresholdSweep: thresholdSweep(probabilities, needed) })
   save('report.json', report)
   console.log(JSON.stringify({ complete: report.complete, calls: binding.status().calls, costUsd: binding.costUsd(), overall: report.overall }))
   if (!report.complete) process.exitCode = 1
