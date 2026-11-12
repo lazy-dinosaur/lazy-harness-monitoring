@@ -34,7 +34,8 @@ export type TransportReceipt = {
   reservedUsd: number; costUsd: number; inputTokens?: number; outputTokens?: number;
   httpAttempts: number; latencyMs: number; status: 'ok' | 'uncertain'
 }
-export function createPiCompactionTransport(runtime: ClassifierRuntime, model: ClassifierModel, record: (r: TransportReceipt) => void, http = globalThis.fetch): MeteredTransport {
+export type ItemProbability = { processorId: string; id: string; probability: number }
+export function createPiCompactionTransport(runtime: ClassifierRuntime, model: ClassifierModel, record: (r: TransportReceipt) => void, http = globalThis.fetch, onProbabilities?: (items: readonly ItemProbability[]) => void): MeteredTransport {
   assertModel(model)
   let busy = false, stopped = false, calls = 0
   return { async invoke(input) {
@@ -71,6 +72,8 @@ export function createPiCompactionTransport(runtime: ClassifierRuntime, model: C
       receipt.inputTokens = u.input; receipt.outputTokens = u.output
       if (result.stopReason !== 'stop' || result.provider !== model.provider || result.model !== model.id || result.api !== model.api) throw Error('classifier failed: uncertain stop')
       const decisions = decodeMonitoringJudgements(input.tasks, decodingProfile, result)
+      // Diagnostic only: per-item probabilities by id (no source text) so thresholds can be analysed offline.
+      onProbabilities?.(input.tasks.flatMap((t, i) => t.view.context.references.map((r, j) => ({ processorId: t.processorId, id: r.id, probability: (result as any).answers[`ref_${i}_${j}`].probability as number }))))
       receipt.costUsd = costUsd; receipt.status = 'ok'
       return { decisions, costUsd }
     } catch { stopped = true; throw Error('classifier transport uncertain; stopped') }

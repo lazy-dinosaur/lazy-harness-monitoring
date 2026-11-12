@@ -7,6 +7,11 @@ import { buildRegionCompactionTask, applyRegionCompaction, regionCompactionCandi
 import { scriptedModels } from '../../../examples/p1/support.ts'
 import { frame, question } from './support/p2-fixtures.ts'
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex')
+test('per-item compaction question carries the module purpose (single-factor revision 1)', () => {
+  const t = buildRegionCompactionTask({ module: { id: 'm', question: { ...question, instructions: 'PURPOSE-XYZ' } }, materials: [], key: 'k', request: 1, dependency: { id: 'd', version: '1' }, frame: { id: 'f', sourceEvent: 'turn_end', cursor: 1 }, goal: 'g' })
+  expect(t.question.reference!.instructions).toContain('Module purpose: PURPOSE-XYZ')
+  expect(t.question.reference!.instructions).not.toContain('Keep only directly relevant')
+})
 for (const mode of ['keep', 'fail', 'single'] as const) test(`runtime compaction equals pure builder; ${mode}`, async () => {
   const models = scriptedModels(), window = new RealtimeMaterialWindow({ enabled: true, allowedKinds: ['conversation-history'], historyMode: 'since-last', metaEvents: ['turn_end'] })
   const module = { id: 'test.compact', compactRegion: true, watchEvents: ['turn_end'], referenceKinds: ['conversation-history'], grants: { actions: ['monitoring.selected-material'], referenceKinds: ['conversation-history'] }, question, destination: 'test' }
