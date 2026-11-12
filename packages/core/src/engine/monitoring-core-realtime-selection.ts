@@ -1,4 +1,5 @@
 import { monitoringWatchSupport } from '../sdk/trigger-points.ts'
+import { buildRegionCompactionTask, applyRegionCompaction, regionCompactionCandidates } from './region-compaction.ts'
 import { createHash } from 'node:crypto'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
@@ -185,17 +186,14 @@ export class RealtimeSelectionBridge {
     let materials = snapshot.materials, compactTexts: string[] = []
     const compactor = this.modules.length === 1 && this.modules[0]!.compactRegion === true ? this.modules[0]! : undefined
     if (compactor) {
-      const isRegion = (m: RealtimeMaterial) => { if (m.kind !== 'conversation-history') return false; try { return JSON.parse(m.content)?.region === true } catch { return false } }
-      const head = (m: RealtimeMaterial) => /^\[(memo|state|omitted)/.test(m.text)
-      const region = materials.filter(m => isRegion(m) && !head(m))
+      const region = regionCompactionCandidates(materials)
       if (region.length > 1) {
-        const cscope = `compact:${hash([key, this.requests])}`, cversion = hash([snapshot.dependency, region.map(r => [r.id, r.version])])
-        const task = { processorId: compactor.id, question: { instructions: `Prepare this monitoring module's input. Its purpose: ${compactor.question.instructions}`, criteria: { run: 'Some listed item matters for that purpose.', skip: 'No listed item matters for that purpose.', defer: 'Cannot tell.' }, reference: { instructions: 'Is item {id} needed to judge this module purpose on the current event? Keep only directly relevant items.', criteria: { true: 'Needed for this purpose.', false: 'Not needed for this purpose.' } } }, view: { event: { id: `${input.frame.id}:compact`, kind: input.frame.sourceEvent, scopeId: cscope, contextVersion: cversion, sequence: input.frame.cursor, payload: { sourceEvent: input.frame.sourceEvent } }, eventRef: `event:${input.frame.id}:compact`, context: { scopeId: cscope, version: cversion, goal: this.options.goal, references: region.map(({ id, kind, version, content }) => ({ id, kind, version, content })) } } } as unknown as JudgeTask
+        const task = buildRegionCompactionTask({ module: compactor, materials, key, request: this.requests, dependency: snapshot.dependency, frame: input.frame, goal: this.options.goal })
         try {
           const out = await this.models.judgeBatch([task], lease.signal)
-          const keep = new Set([...(out[compactor.id]?.evidenceRefs ?? [])].filter(id => region.some(r => r.id === id)))
-          materials = materials.filter(m => !isRegion(m) || head(m) || keep.has(m.id))
-          compactTexts = region.filter(r => keep.has(r.id)).map(r => r.text)
+          const applied = applyRegionCompaction(materials, out[compactor.id]?.evidenceRefs ?? [])
+          materials = applied.materials
+          compactTexts = applied.compactTexts
           this.note(input, 'region_compacted', compactor.id)
         } catch { this.note(input, 'region_compaction_failed', compactor.id) }
         if (lease.signal.aborted || !lease.isCurrent()) { this.note(input, 'scope_or_permission_unavailable'); return }

@@ -138,6 +138,7 @@ See [R7 rules and remaining limits](docs/qualification/p2-reliability-review.md#
 ## Qualification reviews
 
 - [Qualification index (issue #1, P0/P1)](docs/qualification/README.md)
+- [Compaction-only evaluation: stages 1–2, offline DEV](docs/qualification/compaction-eval.md)
 - [P1 API/condition review and proposed deltas](docs/qualification/p1-api-condition-review.md)
 - [Offline public-API examples and reproduction](examples/p1/README.md)
 
