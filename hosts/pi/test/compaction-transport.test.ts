@@ -2,8 +2,8 @@ import { describe, test, expect } from 'bun:test'
 import { statSync, rmSync, mkdtempSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { MODEL, createPiCompactionTransport, decodingProfile, estimateRequest, requestBody, type ClassifierModel, type ClassifierRuntime, type TransportReceipt } from '../src/eval/compaction-transport.ts'
-import { parseRunArgs, estimateDataset, privateOutput, privateRecords, run } from '../src/eval/compaction-run.ts'
+import { MODEL, assertModel, assertOpenRouterJevOnly, createPiCompactionTransport, decodingProfile, estimateRequest, requestBody, type ClassifierModel, type ClassifierRuntime, type TransportReceipt } from '../src/eval/compaction-transport.ts'
+import { parseRunArgs, estimateDataset, privateOutput, privateRecords, run, openRouterCredentialConfigured } from '../src/eval/compaction-run.ts'
 import { parseRegionDataset, parseRegionLabels } from '../../../packages/eval/src/compaction-dataset.ts'
 import { regionTask, evaluateCompaction, scoreCompaction } from '../../../packages/eval/src/compaction.ts'
 import { createMeteredCompactionBinding } from '../../../packages/eval/src/compaction-meter.ts'
@@ -93,6 +93,23 @@ describe('runner admission and private receipts', () => {
     }
     // This path refuses before SDK import; no model/runtime is created.
     await expect(run([])).rejects.toThrow()
+  })
+  test('OpenRouter is Jev-only: other models and aliases are refused before any request', () => {
+    for (const id of ['~liquid/d1-latest', '~typesafe/jev-latest', 'baseten/joey-1', 'typesafe/jev-1.14-preview', 'openai/gpt-4o']) {
+      expect(() => assertOpenRouterJevOnly({ provider: 'openrouter', id })).toThrow('OpenRouter is used only for pinned TypeSafe Jev models')
+      expect(() => assertModel({ ...model, id })).toThrow()
+    }
+    expect(() => assertOpenRouterJevOnly({ provider: 'openrouter', id: 'typesafe/jev-1.14' })).not.toThrow()
+    expect(() => assertOpenRouterJevOnly({ provider: 'openrouter', id: 'typesafe/jev-1.13' })).not.toThrow()
+    expect(() => assertModel(model)).not.toThrow()
+    expect(() => assertModel({ ...model, id: 'typesafe/jev-1.13' })).toThrow('exact classifier/API/endpoint required')
+  })
+  test('stored OpenRouter api_key or oauth credential is accepted; other providers/types are not', () => {
+    expect(openRouterCredentialConfigured([{ providerId: 'openrouter', type: 'oauth' }])).toBe(true)
+    expect(openRouterCredentialConfigured([{ providerId: 'openrouter', type: 'api_key' }])).toBe(true)
+    expect(openRouterCredentialConfigured([])).toBe(false)
+    expect(openRouterCredentialConfigured([{ providerId: 'typesafe', type: 'api_key' }, { providerId: 'openai', type: 'oauth' }])).toBe(false)
+    expect(openRouterCredentialConfigured([{ providerId: 'openrouter', type: 'env' }])).toBe(false)
   })
   test('resolve-only is explicit and cannot imply approval', () => {
     expect(parseRunArgs(['--resolve-only', '--model', MODEL]).resolveOnly).toBe(true)
