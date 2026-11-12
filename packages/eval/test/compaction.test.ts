@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { generateCompactionDev } from '../src/compaction-generate-dev.ts'
+import { generateCompactionDev, validateDevDataset, validateConversation, forbiddenHints, devGoals, type DevEntry } from '../src/compaction-generate-dev.ts'
 import { parseRegionDataset, parseRegionLabels, purposes } from '../src/compaction-dataset.ts'
 import { evaluateCompaction, scoreCompaction, wilson, regionTask, deterministicCompactionStub, compactionQuestions } from '../src/compaction.ts'
 import { createMonitoringModelRouter } from '@lazy-harness/monitoring-core'
@@ -13,13 +13,57 @@ test('committed dev schema and deterministic reproduction: 60 regions; 20/purpos
     const regions = dataset.regions.filter(r => r.purpose === purpose)
     expect(regions).toHaveLength(20)
     expect(regions.filter(r => !Object.values(labels.labels[r.id]).some(Boolean))).toHaveLength(4)
-    expect(regions.flatMap(r => Object.values(labels.labels[r.id])).filter(Boolean)).toHaveLength(32)
-    expect(regions.reduce((n, r) => n + r.materials.length, 0)).toBe(191)
+    const counts = { references: [36, 113], 'rule-steering': [33, 107], memory: [20, 115] }[purpose]
+    expect(regions.flatMap(r => Object.values(labels.labels[r.id])).filter(Boolean)).toHaveLength(counts[0])
+    expect(regions.reduce((n, r) => n + r.materials.length, 0)).toBe(counts[1])
+    expect(new Set(regions.map(r => r.goal))).toEqual(new Set([devGoals[purpose]]))
+    expect(new Set(regions.map(r => r.materials.length)).size).toBeGreaterThan(2)
+    expect(regions.some(r => r.materials.slice(1, -1).some(m => labels.labels[r.id][m.id]))).toBe(true)
     expect(regions.some(r => r.materials.some(m => m.text.length > 700))).toBe(true)
     expect(regions.some(r => labels.labels[r.id][r.materials[0].id])).toBe(true)
     expect(regions.some(r => labels.labels[r.id][r.materials.at(-1)!.id])).toBe(true)
     expect(regionTask(regions[0]).question.instructions).toContain(compactionQuestions[purpose].instructions)
   }
+})
+test('DEV text quality: no hints/region duplicates; global uniqueness >=95%; realistic roles and event context', () => {
+  expect(() => validateDevDataset(dataset)).not.toThrow()
+  const texts = dataset.regions.flatMap(r => r.materials.map(m => m.text))
+  expect(new Set(texts).size).toBe(327)
+  expect(new Set(texts).size / texts.length).toBeGreaterThanOrEqual(.95)
+  for (const r of dataset.regions) {
+    expect(new Set(r.materials.map(m => m.text)).size).toBe(r.materials.length)
+    expect(r.frame.sourceEvent).toBe('message_end')
+    expect(r.goal).not.toMatch(/Current (request|action|event)|already read|docs\//i)
+    for (const m of r.materials) expect(m.text).toMatch(/^\[(user|assistant|tool call|tool result:read)\] /)
+    if (Object.values(labels.labels[r.id]).some(Boolean)) {
+      expect(r.materials.at(-1)!.text).toStartWith(r.purpose === 'rule-steering' ? '[assistant]' : '[user]')
+      expect(labels.labels[r.id][r.materials.at(-1)!.id]).toBe(true)
+    }
+  }
+})
+for (const hint of forbiddenHints) test(`DEV rejects answer hint: ${hint}`, () => {
+  const d = structuredClone(dataset); d.regions[0].materials[0] = { ...d.regions[0].materials[0], text: `[user] ${hint}` }
+  expect(() => validateDevDataset(d)).toThrow('forbidden answer hint')
+})
+for (const defect of ['duplicate', 'global-repetition', 'changing-goal', 'orphan-result', 'missing-result', 'interleaved-result'] as const) test(`DEV rejects ${defect}`, () => {
+  const d = structuredClone(dataset), items = d.regions[0].materials
+  if (defect === 'duplicate') items[1] = { ...items[1], text: items[0].text }
+  if (defect === 'global-repetition') for (const r of d.regions) r.materials = r.materials.map((m, i) => ({ ...m, text: `[user] Common message ${i}` }))
+  if (defect === 'changing-goal') d.regions[0].goal += ' Current request: fix cache.'
+  if (defect === 'orphan-result') items[0] = { ...items[0], text: '[tool result:read] ok' }
+  if (defect === 'missing-result') items[items.length - 1] = { ...items.at(-1)!, text: '[tool call] read → docs/cache.md' }
+  if (defect === 'interleaved-result') items[0] = { ...items[0], text: '[tool call] read → docs/config.md' }
+  expect(() => validateDevDataset(d)).toThrow()
+})
+test('authoring checks read call/result target identity before core discards result bodies', () => {
+  const call: DevEntry = { kind: 'c', text: 'docs/contract.md', needed: false }
+  const result: DevEntry = { kind: 'r', text: 'docs/contract.md', needed: false }
+  expect(() => validateConversation([call, result])).not.toThrow()
+  expect(() => validateConversation([call, { ...result, text: 'docs/draft.md' }])).toThrow('target')
+  expect(() => validateConversation([result, call])).toThrow()
+  expect(() => validateConversation([call, call, result])).toThrow()
+  expect(() => validateConversation([call])).toThrow()
+  expect(() => validateConversation([call, { kind: 'u', text: 'Continue.', needed: false }, result])).toThrow()
 })
 for (const corruption of ['extra-label', 'content-label', 'duplicate-id', 'bad-region', 'bad-provenance'] as const) test(`schema rejects ${corruption}`, () => {
   const d: any = structuredClone(dataset), m = d.regions[0].materials[0]
@@ -54,9 +98,9 @@ test('label isolation through actual core model-host adapter: flip gold, wire un
 test('perfect selection scoring and explicit denominators', async () => {
   const rows = await evaluateCompaction(dataset, async tasks => Object.fromEntries(tasks.map(t => [t.processorId, { mode: 'run', reason: 'oracle offline test', evidenceRefs: t.view.context.references.filter(r => Object.values(labels.labels).some(l => l[r.id])).map(r => r.id) }])))
   const s = scoreCompaction(dataset, labels, rows)
-  expect(s.overall.neededItemRetention).toMatchObject({ numerator: 96, denominator: 96, rate: 1 })
-  expect(s.overall.noiseRemoval).toMatchObject({ numerator: 477, denominator: 477, rate: 1 })
-  expect(s.overall.itemReduction.denominator).toBe(573)
+  expect(s.overall.neededItemRetention).toMatchObject({ numerator: 89, denominator: 89, rate: 1 })
+  expect(s.overall.noiseRemoval).toMatchObject({ numerator: 246, denominator: 246, rate: 1 })
+  expect(s.overall.itemReduction.denominator).toBe(335)
   expect(s.overall.allDropped).toMatchObject({ numerator: 12, denominator: 60 })
   expect(s.overall.failureFallback.rate).toBe(0)
   expect(s.overall.costUsd).toBe(0)

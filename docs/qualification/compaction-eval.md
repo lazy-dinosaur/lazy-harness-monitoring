@@ -1,6 +1,7 @@
 # Compaction-only evaluation — stages 1–2
 
-Approved scope: option A (2026-11-11), offline implementation and synthetic DEV data.
+Approved scope: option A (2026-11-11), offline implementation and synthetic DEV data;
+2026-11-12 option A rebuilds only DEV data/generator and related tests/docs, leaving stage-1 tooling unchanged.
 **Stage 3 is NOT authorized. No real model/provider/paid calls were made.** Git/GitHub operations
 for the branch and PR are separate from inference. No endpoint, credentials, provider SDK,
 Fabric dependency, automatic model discovery or real-network CLI mode is included.
@@ -26,12 +27,30 @@ by evaluation. Labels are joined after selection by the scorer. A test flips lab
 that actual core model-host requests remain identical. The closed dataset schema rejects label
 fields in reference bodies as well as outer material records.
 
-Synthetic goals specify the current request/action. **Known runtime prompt limitation:** the
-compaction view supplies event metadata, goal and region only; it does not add external policy
-references or `currentReferenceIds` used by the later rule-steering judgement. This harness
-intentionally does not repair or augment that prompt. It tests relevance of region context,
-not final U1/U6/memory accuracy. The corpus is template-based and strongly correlated; its
-point estimates/intervals must not be generalized to production traffic.
+Goals are now fixed host configuration strings, identical across each purpose's 20 regions.
+Current requests/actions, record catalogs and completed reads appear only in region items.
+The [dataset README](../../packages/eval/data/compaction-dev/README.md#fixed-host-configuration-goals)
+records each exact string and its configuration/purpose sources. These are authored realistic
+DEV goals, not production defaults supplied by the module bindings.
+
+**Known runtime prompt limitation:** compaction supplies module instructions, event metadata,
+goal and region only; it does not add external policy references, `currentReferenceIds`, read
+ledger contents or memory source attestations. The dataset does not repair or augment that
+prompt. Tool results use core's real status-only rendering. It tests region-context relevance,
+not final U1/U6/memory accuracy. Fictional, agent-authored conversations and labels are DEV-only
+and require user review. Their correlations/base rates must not be generalized to production.
+
+### Parent-review rebuild (2026-11-12)
+
+The e293b87 dataset leaked answers in explanatory tails, repeated noise lines and topic-swapped
+templates, mismatched speakers/tool pairs, and put event-specific information in `goal`. The
+rebuild uses natural same-topic near misses, varied wording/length/structure, coherent long
+incident narratives and correctly attributed user decisions versus assistant proposals.
+Latest user turns/assistant action statements establish the current `message_end` event.
+Checks cover forbidden hints, in-region duplicates, >=95% global uniqueness, fixed goals and
+call/result order plus target identity (before core discards result bodies). Separate labels,
+closed schemas, deterministic regeneration and label-isolation tests remain in place.
+The six-region user review sample is `/tmp/compaction-dev-review.md` (outside Git).
 
 ## Offline reproduction
 
@@ -55,8 +74,8 @@ Regenerate only these DEV files (never a holdout) with:
 bun packages/eval/src/compaction-generate-dev.ts
 ```
 
-The dataset has 60 regions (20/purpose), 5–15 items/region, 573 items total: 96 needed and
-477 not-needed. See the [dataset README](../../packages/eval/data/compaction-dev/README.md).
+The dataset has 60 regions (20/purpose), 5–13 items/region within the 5–15 bounds, 335 items
+total: 89 needed and 246 not-needed; 12 nothing-needed regions and 327/335 unique texts (97.61%). See the [dataset README](../../packages/eval/data/compaction-dev/README.md).
 The generator and gold are local dev artifacts; neither is passed to a model.
 
 ## Metrics and denominators
@@ -88,10 +107,10 @@ recall while providing no compaction. Report failures separately so fallback can
 
 ## Stage 1–2 verification
 
-- `bun run test`: **851 passed, 0 failed**, 4,953 assertions across 63 files (34 new tests).
+- `bun test`: **876 passed, 0 failed**, 5,605 assertions across 63 files (25 added DEV-quality tests).
 - `bun run typecheck`: all **8** configured TypeScript project checks passed.
 - Offline dry run wrote `/tmp/cmpeval-dry-run.json`: 60 region rows, USD 0, network false.
-  Alternating-position stub retained 48/96 needed items; this is a mechanics check, not model evidence.
+  Alternating-position stub retained 66/89 needed items; this is a mechanics check, not model evidence.
 - `git diff --check` passed. Finite pattern scans of changed sources, tests, docs and DEV data
   found no private home paths, email addresses, common provider/cloud/private-key tokens,
   bearer tokens or JWT-shaped secrets. This is not a universal secret detector.
