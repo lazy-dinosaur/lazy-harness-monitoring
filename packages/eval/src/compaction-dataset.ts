@@ -2,14 +2,14 @@ import type { RealtimeMaterial } from '@lazy-harness/monitoring-core/engine/moni
 export const purposes = ['references', 'rule-steering', 'memory'] as const
 export type Purpose = typeof purposes[number]
 export type Region = { id: string; purpose: Purpose; goal: string; frame: { id: string; sourceEvent: string; cursor: number }; materials: RealtimeMaterial[] }
-export type RegionDataset = { schemaVersion: 1; split: 'dev'; regions: Region[] }
-export type RegionLabels = { schemaVersion: 1; split: 'dev'; labels: Record<string, Record<string, boolean>> }
+export type RegionDataset = { schemaVersion: 1; split: 'dev' | 'holdout'; regions: Region[] }
+export type RegionLabels = { schemaVersion: 1; split: 'dev' | 'holdout'; labels: Record<string, Record<string, boolean>> }
 const object = (x: unknown): x is Record<string, any> => !!x && typeof x === 'object' && !Array.isArray(x)
 const exact = (x: Record<string, any>, keys: string[]) => Object.keys(x).length === keys.length && keys.every(k => Object.hasOwn(x, k))
 const text = (x: unknown): x is string => typeof x === 'string' && x.length > 0
 /** Closed data schema: rejects extra fields (including labels) at every model-visible layer. */
-export function parseRegionDataset(value: unknown): RegionDataset {
-  if (!object(value) || !exact(value, ['schemaVersion', 'split', 'regions']) || value.schemaVersion !== 1 || value.split !== 'dev' || !Array.isArray(value.regions)) throw Error('invalid compaction dataset')
+export function parseRegionDataset(value: unknown, expectedSplit: 'dev' | 'holdout' = 'dev'): RegionDataset {
+  if (!object(value) || !exact(value, ['schemaVersion', 'split', 'regions']) || value.schemaVersion !== 1 || value.split !== expectedSplit || !Array.isArray(value.regions)) throw Error('invalid compaction dataset')
   const ids = new Set<string>()
   for (const r of value.regions) {
     if (!object(r) || !exact(r, ['id', 'purpose', 'goal', 'frame', 'materials']) || !text(r.id) || ids.has(r.id) || !purposes.includes(r.purpose) || !text(r.goal) || !object(r.frame) || !exact(r.frame, ['id', 'sourceEvent', 'cursor']) || !text(r.frame.id) || !text(r.frame.sourceEvent) || !Number.isSafeInteger(r.frame.cursor) || r.frame.cursor < 1 || !Array.isArray(r.materials) || r.materials.length < 5 || r.materials.length > 32) throw Error('invalid region')
@@ -23,8 +23,8 @@ export function parseRegionDataset(value: unknown): RegionDataset {
   }
   return value as RegionDataset
 }
-export function parseRegionLabels(value: unknown, dataset: RegionDataset): RegionLabels {
-  if (!object(value) || !exact(value, ['schemaVersion', 'split', 'labels']) || value.schemaVersion !== 1 || value.split !== 'dev' || !object(value.labels) || !exact(value.labels, dataset.regions.map(r => r.id))) throw Error('invalid labels')
+export function parseRegionLabels(value: unknown, dataset: RegionDataset, expectedSplit: 'dev' | 'holdout' = 'dev'): RegionLabels {
+  if (!object(value) || !exact(value, ['schemaVersion', 'split', 'labels']) || value.schemaVersion !== 1 || value.split !== expectedSplit || !object(value.labels) || !exact(value.labels, dataset.regions.map(r => r.id))) throw Error('invalid labels')
   for (const r of dataset.regions) {
     const labels = value.labels[r.id]
     if (!object(labels) || !exact(labels, r.materials.map(m => m.id)) || Object.values(labels).some(v => typeof v !== 'boolean')) throw Error('invalid item labels')

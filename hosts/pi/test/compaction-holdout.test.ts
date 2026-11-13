@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, mkdirSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
+import { parseRegionDataset, parseRegionLabels } from '../../../packages/eval/src/compaction-dataset.ts'
 import { generateCompactionLongDev } from '../../../packages/eval/src/compaction-generate-long-dev.ts'
 import { holdoutHash, prepareHoldout, parseRunArgs, parseHoldoutLabels, run, frozenPolicy } from '../src/eval/compaction-run.ts'
 import { MODEL, type ClassifierModel, type ClassifierRuntime } from '../src/eval/compaction-transport.ts'
@@ -12,7 +13,8 @@ const liveArgs = ['--approve-real-calls', '--model', MODEL, '--dataset', 'holdou
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'cmp-seal-test-')), dir = join(root, 'sealed')
   mkdirSync(dir)
-  const { dataset, labels } = generateCompactionLongDev()
+  const generated = generateCompactionLongDev()
+  const dataset = { ...generated.dataset, split: 'holdout' as const }, labels = { ...generated.labels, split: 'holdout' as const }
   const noiseKind: Record<string, Record<string, string>> = {}
   for (const r of dataset.regions) noiseKind[r.id] = Object.fromEntries(r.materials.filter(m => !labels.labels[r.id]![m.id]).map((m, i) => [m.id, i % 2 ? 'same-topic' : 'filler']))
   const regions = JSON.stringify(dataset), gold = JSON.stringify({ ...labels, noiseKind })
@@ -23,11 +25,12 @@ function fixture() {
 const noHttp = Object.assign(async () => new Response('{}'), { preconnect() {} }) as unknown as typeof fetch
 function fakeRuntime(onCall: () => void = () => {}, fail = false) {
   let calls = 0
+  const requests: unknown[] = []
   const runtime: ClassifierRuntime & { getModelOfType(): ClassifierModel; listCredentials(): Promise<{ providerId: string; type: string }[]> } = {
     getModelOfType: () => model,
     listCredentials: async () => [{ providerId: 'openrouter', type: 'oauth' }],
     async classify(m, body, options) {
-      calls++; onCall()
+      calls++; requests.push(structuredClone(body)); onCall()
       if (fail) throw Error('fake failure')
       expect(JSON.stringify(body)).not.toMatch(/noiseKind|same-topic|filler|"labels"/)
       await options!.onPayload!({ model: m.id, ...body }, m)
@@ -35,7 +38,7 @@ function fakeRuntime(onCall: () => void = () => {}, fail = false) {
       return { api: m.api, provider: m.provider, model: m.id, timestamp: 0, stopReason: 'stop', answers: Object.fromEntries(Object.entries(body.questions).map(([id, q]) => [id, q.type === 'choice' ? { type: 'choice', choice: 'run', confidence: .9, probabilities: { run: .9, skip: .1 } } : { type: 'bool', probability: .1 }])), usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 100, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } }
     },
   }
-  return { runtime, calls: () => calls }
+  return { runtime, calls: () => calls, requests }
 }
 test('holdout CLI requires seal/path; rejects aliases, missing approval, malformed caps and stray seal options', () => {
   const f = fixture()
@@ -109,7 +112,7 @@ test('metadata is labels-only, sparse, noise-only, and closed schema remains enf
     expect(() => prepareHoldout(f.dir, holdoutHash(Buffer.from(text), Buffer.from(f.gold)), false)).toThrow('material')
   } finally { f.clean() }
 })
-test('full runner fake-only: marker before dispatch, sealed label snapshot after calls, identity/policy/noise split private', async () => {
+test('full runner fake-only: holdout split preflight, marker before dispatch, sealed scoring snapshot, noise split private', async () => {
   const f = fixture(), output = join(f.root, 'out')
   const fake = fakeRuntime(() => {
     expect(existsSync(join(f.dir, '.opened'))).toBe(true)
@@ -135,14 +138,65 @@ test('full runner fake-only: marker before dispatch, sealed label snapshot after
     }
   } finally { f.clean() }
 })
-test('malformed gold is parsed only after all calls; failed post-call validation consumes the seal', async () => {
+test('malformed labels, noiseKind and label split refuse in preflight without marker, output or runtime', async () => {
+  const f = fixture(), fake = fakeRuntime()
+  let runtimeLoads = 0
+  try {
+    const r = f.dataset.regions[0]!, id = r.materials[0]!.id
+    const badLabels = structuredClone(f.labels); delete badLabels.labels[r.id]![id]
+    const diversity = structuredClone(f.labels)
+    for (const row of Object.values(diversity.labels)) for (const id of Object.keys(row)) row[id] = true
+    const inconsistent = structuredClone(f.labels)
+    const tool = r.materials.find(m => JSON.parse(m.content).toolCallId)!
+    inconsistent.labels[r.id]![tool.id] = !inconsistent.labels[r.id]![tool.id]
+    const cases = [
+      ['invalid JSON', undefined],
+      [JSON.stringify(badLabels), 'invalid item labels'],
+      [JSON.stringify({ ...f.labels, split: 'dev' }), 'invalid labels'],
+      [JSON.stringify({ ...f.labels, noiseKind: [] }), 'invalid noiseKind'],
+      [JSON.stringify({ ...f.labels, noiseKind: { unknown: {} } }), 'invalid noiseKind region'],
+      [JSON.stringify({ ...f.labels, noiseKind: { [r.id]: { [id]: '' } } }), 'invalid noiseKind item'],
+      [JSON.stringify(diversity), 'needed position patterns'],
+      [JSON.stringify(inconsistent), 'inconsistent tool unit labels'],
+    ] as const
+    for (const [bad, error] of cases) {
+      writeFileSync(join(f.dir, 'labels.json'), bad)
+      const sha = holdoutHash(Buffer.from(f.regions), Buffer.from(bad))
+      await expect(run([...liveArgs, '--holdout-dir', f.dir, '--expect-sha256', sha, '--output-dir', join(f.root, 'out')], async () => { runtimeLoads++; return fake.runtime }, noHttp)).rejects.toThrow(error)
+      expect(existsSync(join(f.dir, '.opened'))).toBe(false)
+      expect(existsSync(join(f.root, 'out'))).toBe(false)
+    }
+    expect(runtimeLoads).toBe(0); expect(fake.calls()).toBe(0)
+  } finally { f.clean() }
+})
+test('split parsing is opt-in and holdout region split mismatch never creates a marker', () => {
+  const f = fixture()
+  try {
+    expect(() => parseRegionDataset(f.dataset)).toThrow('dataset')
+    expect(parseRegionDataset(f.dataset, 'holdout')).toEqual(f.dataset)
+    expect(() => parseRegionLabels(f.labels, f.dataset)).toThrow('labels')
+    expect(parseRegionLabels(f.labels, f.dataset, 'holdout')).toEqual(f.labels)
+    const dev = generateCompactionLongDev()
+    expect(parseRegionDataset(dev.dataset)).toEqual(dev.dataset)
+    expect(parseRegionLabels(dev.labels, dev.dataset)).toEqual(dev.labels)
+    expect(() => parseRegionDataset(dev.dataset, 'holdout')).toThrow('dataset')
+    expect(() => parseRegionLabels(dev.labels, dev.dataset, 'holdout')).toThrow('labels')
+    const regions = JSON.stringify({ ...f.dataset, split: 'dev' })
+    writeFileSync(join(f.dir, 'regions.json'), regions)
+    expect(() => prepareHoldout(f.dir, holdoutHash(Buffer.from(regions), Buffer.from(f.gold)), false)).toThrow('dataset')
+    expect(existsSync(join(f.dir, '.opened'))).toBe(false)
+  } finally { f.clean() }
+})
+test('every holdout request excludes preflight labels and noise metadata', async () => {
   const f = fixture(), fake = fakeRuntime()
   try {
-    const bad = 'invalid JSON'; writeFileSync(join(f.dir, 'labels.json'), bad)
-    const sha = holdoutHash(Buffer.from(f.regions), Buffer.from(bad))
-    await expect(run([...liveArgs, '--holdout-dir', f.dir, '--expect-sha256', sha, '--output-dir', join(f.root, 'out')], async () => fake.runtime, noHttp)).rejects.toThrow()
-    expect(fake.calls()).toBe(30)
-    expect(() => prepareHoldout(f.dir, sha, false)).toThrow('already opened')
+    await run([...liveArgs, ...f.args, '--output-dir', join(f.root, 'out')], async () => fake.runtime, noHttp)
+    expect(fake.requests).toHaveLength(f.dataset.regions.length)
+    for (const request of fake.requests) {
+      const text = JSON.stringify(request)
+      expect(text).not.toMatch(/"labels"|"noiseKind"|"split"|same-topic|filler/)
+      for (const row of Object.values(f.labels.labels)) expect(text).not.toContain(JSON.stringify(row))
+    }
   } finally { f.clean() }
 })
 test('caps and output guards refuse before opening or classification', async () => {

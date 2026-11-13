@@ -10,8 +10,8 @@ export function regionTask(r: Region, settings?: RegionCompactionSettings) {
 }
 export type CompactionResult = { regionId: string; purpose: Purpose; keptIds: string[]; failed: boolean; skipped: boolean; latencyMs: number; costUsd: number; pinnedCount: number; candidateBytes: number; keptBytes: number; budgetBytes: number; budgetCompliant: boolean }
 /** Same JudgeBatchPort as core/router.judgeBatch. Labels are not accepted here. */
-export async function evaluateCompaction(dataset: RegionDataset, judgeBatch: JudgeBatchPort, signal = new AbortController().signal, cost = () => 0, settings?: RegionCompactionSettings): Promise<CompactionResult[]> {
-  parseRegionDataset(dataset)
+export async function evaluateCompaction(dataset: RegionDataset, judgeBatch: JudgeBatchPort, signal = new AbortController().signal, cost = () => 0, settings?: RegionCompactionSettings, expectedSplit: 'dev' | 'holdout' = 'dev'): Promise<CompactionResult[]> {
+  parseRegionDataset(dataset, expectedSplit)
   const rows: CompactionResult[] = []
   for (const r of dataset.regions) {
     signal.throwIfAborted()

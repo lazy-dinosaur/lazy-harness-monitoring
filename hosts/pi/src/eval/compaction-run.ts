@@ -94,7 +94,7 @@ export function thresholdSweep(items: readonly { id: string; probability: number
 export async function budgetSweep(dataset: RegionDataset, labels: import('../../../../packages/eval/src/compaction-dataset.ts').RegionLabels, items: readonly ItemProbability[]) {
   const probabilities = Object.fromEntries(items.map(it => [it.id, it.probability]))
   return Promise.all([0.1, 0.2, 0.3, 0.4, 0.5].map(async dropBelow => {
-    const rows = await evaluateCompaction(dataset, async tasks => Object.fromEntries(tasks.map(t => [t.processorId, { mode: 'run', reason: 'offline recorded probability replay', evidenceRefs: [], referenceProbabilities: probabilities }])), new AbortController().signal, () => 0, { dropBelow })
+    const rows = await evaluateCompaction(dataset, async tasks => Object.fromEntries(tasks.map(t => [t.processorId, { mode: 'run', reason: 'offline recorded probability replay', evidenceRefs: [], referenceProbabilities: probabilities }])), new AbortController().signal, () => 0, { dropBelow }, dataset.split)
     return { dropBelow, ...scoreCompaction(dataset, labels, rows).overall }
   }))
 }
@@ -110,11 +110,19 @@ export function prepareHoldout(dir: string, expected: string, resolveOnly: boole
   const sealedLabels = resolveOnly ? undefined : readFileSync(outsideGit(join(root, 'labels.json')))
   const sha256 = sealedLabels ? holdoutHash(regions, sealedLabels) : undefined
   if (sha256 !== undefined && sha256 !== expected.toLowerCase()) throw Error('holdout sha256 mismatch')
-  const dataset = parseRegionDataset(JSON.parse(regions.toString('utf8')))
+  const dataset = parseRegionDataset(JSON.parse(regions.toString('utf8')), 'holdout')
   if (!dataset.regions.length) throw Error('empty holdout')
   validateDevDataset(dataset)
   for (const r of dataset.regions) {
     if (r.materials.reduce((n, m) => n + Buffer.byteLength(m.content), 0) > 16384 || r.materials.some(m => Buffer.byteLength(m.content) > 8192)) throw Error('holdout exceeds LONG DEV window bounds')
+  }
+  // Validate the sealed snapshot before exposing open(); labels stay private until scoring.
+  const parsed = sealedLabels ? parseHoldoutLabels(JSON.parse(sealedLabels.toString('utf8')), dataset) : undefined
+  if (parsed) {
+    validateLongDevDiversity(dataset, parsed.labels)
+    for (const r of dataset.regions) for (const unit of planRegionCompaction(r.materials, { frame: r.frame }).units) {
+      if (new Set(unit.members.map(m => parsed.labels.labels[r.id]![m.id])).size > 1) throw Error('inconsistent tool unit labels')
+    }
   }
   return { dataset, identity: { sha256: sha256 ?? expected.toLowerCase(), regionCount: dataset.regions.length, sealVerified: !resolveOnly },
     open(output: string) {
@@ -123,12 +131,7 @@ export function prepareHoldout(dir: string, expected: string, resolveOnly: boole
       writeFileSync(marker, JSON.stringify({ openedAt: new Date().toISOString(), outputDir: output, sha256 }) + '\n', { flag: 'wx', mode: 0o600 })
     },
     loadLabels() {
-      if (!sealedLabels) throw Error('resolve-only cannot load labels')
-      const parsed = parseHoldoutLabels(JSON.parse(sealedLabels.toString('utf8')), dataset)
-      validateLongDevDiversity(dataset, parsed.labels)
-      for (const r of dataset.regions) for (const unit of planRegionCompaction(r.materials, { frame: r.frame }).units) {
-        if (new Set(unit.members.map(m => parsed.labels.labels[r.id]![m.id])).size > 1) throw Error('inconsistent tool unit labels')
-      }
+      if (!parsed) throw Error('resolve-only cannot load labels')
       return parsed
     } }
 }
@@ -136,7 +139,7 @@ export function prepareHoldout(dir: string, expected: string, resolveOnly: boole
 export function parseHoldoutLabels(value: unknown, dataset: RegionDataset) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('invalid holdout labels')
   const { noiseKind, ...gold } = value as Record<string, unknown>
-  const goldLabels = parseRegionLabels(gold, dataset)
+  const goldLabels = parseRegionLabels(gold, dataset, 'holdout')
   const kinds: Record<string, Record<string, string>> = Object.create(null)
   if (noiseKind !== undefined) {
     if (!noiseKind || typeof noiseKind !== 'object' || Array.isArray(noiseKind)) throw Error('invalid noiseKind')
@@ -189,7 +192,7 @@ export async function run(args: string[], makeRuntime?: () => Promise<RunnerRunt
   const results = await evaluateCompaction(dataset, async (tasks, signal) => {
     try { return await binding.judgeBatch(tasks, signal) }
     finally { save('meter-receipts.json', binding.receipts()) }
-  }, new AbortController().signal, binding.costUsd)
+  }, new AbortController().signal, binding.costUsd, undefined, holdout ? 'holdout' : 'dev')
   const holdoutLabels = holdout?.loadLabels()
   const labels = holdoutLabels?.labels ?? parseRegionLabels(await Bun.file(new URL(`../../../../packages/eval/data/compaction-${options.dataset}/labels.json`, import.meta.url)).json(), dataset)
   const report = { holdout: holdout?.identity, frozenPolicy, noiseRemovalByKind: holdoutLabels ? noiseRemovalByKind(holdoutLabels, results) : undefined, backend: MODEL, network: true, complete: results.every(r => !r.failed), meter: binding.status(), ...scoreCompaction(dataset, labels, results) }
