@@ -1,0 +1,14 @@
+{
+  "name": "@lazy-harness/monitoring-example-composition",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@lazy-harness/monitoring-core": "workspace:*",
+    "@lazy-harness/monitoring-host-pi": "workspace:*",
+    "@lazy-harness/monitoring-module-references": "workspace:*",
+    "@lazy-harness/monitoring-module-rule-steering": "workspace:*",
+    "@lazy-harness/monitoring-module-memory": "workspace:*"
+  }
+}

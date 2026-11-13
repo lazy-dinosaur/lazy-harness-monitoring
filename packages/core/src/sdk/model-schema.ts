@@ -38,6 +38,7 @@ export type MonitoringBoundModelProfile = Readonly<{ id: string; backend: string
 export type MonitoringModelRequest = Readonly<{ kind: MonitoringModelKind; body: Json }>
 export type MonitoringModelEstimate = Readonly<{ maxInputTokens: number; maxEstimatedUsd: number }>
 export type MonitoringModelInvocation = Readonly<{ profile: MonitoringBoundModelProfile; signal: AbortSignal; reservation: MonitoringModelEstimate & { maxOutputTokens: number } }>
+export const JUDGEMENT_MODEL_PORT_MAJOR = 1 as const
 export type MonitoringModelBackend = Readonly<{ version: string; provider: string; model: string; kind: MonitoringModelKind; roles: readonly MonitoringModelRole[]; parametersSchema: TSchema; ceilings: MonitoringModelLimits; estimate(request: MonitoringModelRequest, profile: MonitoringBoundModelProfile): MonitoringModelEstimate; invoke(request: MonitoringModelRequest, context: MonitoringModelInvocation): Promise<{ value: unknown }> | { value: unknown } }>
 export type MonitoringModelHost = Readonly<{ backends: Readonly<Record<string, MonitoringModelBackend>>; maxProfiles: number; maxTotalConcurrent: number }>
 function canonical(x: any): string { return JSON.stringify(x && typeof x === 'object' ? Array.isArray(x) ? x.map(v => JSON.parse(canonical(v))) : Object.fromEntries(Object.keys(x).sort().map(k => [k, JSON.parse(canonical(x[k]))])) : x) }

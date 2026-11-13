@@ -60,6 +60,7 @@ export type StateCommitReceipt = Readonly<{ revision: number; durability: 'volat
 /** Synchronous atomic bounded snapshot CAS. A thrown write is UNKNOWN, never rollback evidence.
  * One serial writer per partition; cross-process locking is not part of this port.
  * Backends must reject corruption, never synthesize empty state after an IO failure. */
+export const STATE_PERSISTENCE_PORT_MAJOR = 1 as const
 export interface StatePersistencePort {
   readonly schemaVersion: 1
   readonly limits: StateLimits
