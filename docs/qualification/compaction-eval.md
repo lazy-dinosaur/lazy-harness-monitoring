@@ -356,3 +356,27 @@ only, never existing holdouts. `bun test`: 942 passed, 0 failed, 7160 assertions
 across 67 files; `bun run typecheck`: all 8 projects passed. Privacy/scope checks
 cover changed lines, unchanged lockfile/core/corpora, and whitespace. Pattern
 scanning is not a universal secret detector. No real measurement was made.
+
+## Conclusion (user decision 2026-11-13)
+
+The compaction measurement is closed. The frozen budget-gated policy at `636b108`
+(`budgetBytes` 8192, `dropBelow` 0.2, `pinNewest` 2, current per-item wording) is accepted as the
+default for modules declaring `region.compact` (U1 references). It is already the runtime default;
+no code changed for this decision.
+
+| Run | Needed retention | Noise removal | Byte reduction | Notes |
+|---|---|---|---|---|
+| DEV v2, original wording | 42/89 | 242/246 | - | failed: dropped needed items |
+| DEV v2, revision 1 wording | 89/89 | 41/246 | 10.1% | kept almost everything |
+| LONG DEV v2, budget-gated | 153/153 | 353/581 | 67.2% | budget 30/30 |
+| **Sealed holdout (one time)** | **171/171** | **313/789** | **55.5%** | budget 30/30; filler 296/301, same-topic 17/488 |
+
+Holdout: `compaction-long-holdout-v1`, seal `b137c47fd6ca810bd0a261661f4ab9dcb72e070bcd9d0e70f4bbf3883b50098c`,
+authored by a separate agent, `openrouter/typesafe/jev-1.14`, 30 calls, USD 0.0159 reported. The holdout is consumed.
+
+What this establishes: the policy did not lose a needed item on unseen, harder data and kept every region
+within budget. What it does not establish: separation of same-topic near misses (3.5% removed); the size
+reduction comes from unrelated bulk and budget trimming, so the judgement still sees near misses. Limits:
+synthetic agent-authored data, author and operator are agents under the same user, one run.
+
+Future work (not approved): supersession/near-miss questions, new DEV and holdout sets for them.
