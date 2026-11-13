@@ -21,6 +21,22 @@ Modules: `references` (U1), `rule-steering` (U6), `memory` (new). Data (traces, 
 
 Records (design, decisions, measurements) stay in the lazy-harness repository under `.lazy-harness/`; see `MIGRATION.md`.
 
+## Module composition contract (ADR 0063)
+
+- [Root repository manifest](lazy-harness.module.json): one declaration for core, hosts, eval and all purpose modules.
+- [Composition entry](composition.ts): core exports, port adapters, and host/references/rules/memory namespaces.
+- [Canonical attachment contract](docs/design/attachment-contract.md): port ownership, integer majors, guarded startup, lifecycle and downstream attach gates.
+- [Purpose-module authoring contract](docs/design/module-contract.md): internal modules are not separate repository manifests.
+- [Result-format audit](docs/design/result-format-audit.md): WorkerCompletion origin, boundary envelopes and held semantics.
+- [Offline composition example](examples/composition/README.md): fake-backed observe-first assembly and tests.
+- [Migration status](MIGRATION.md): step 2 complete; records canonical on lazy-harness main via PRs.
+
+`startMonitoringComposition(root, hostMajors, compose)` checks the manifest, entry/conformance
+files and supported integer majors before calling `compose`. Import alone does not attach.
+Port names are module-local drafts pending SDD §7; manifest semver is not compatibility.
+The composition example is offline, not deployment or live-use approval. SDD §6.7 is a
+lazy-harness-side attach contract, not a module dependency. No separate contract repo.
+
 ## Worker and runtime boundary (D1')
 
 No package here depends on Fabric. Core owns `WorkerExecutionPort<Input, Output>`, exported from
@@ -58,7 +74,7 @@ Core exports `StatePersistencePort`, `StateBinding`, `StateSnapshot`, `StateLimi
 `StateCommitReceipt`, `MonitoringStateSession`, `openMonitoringState`, `createMemoryStatePort`,
 `runStatePortConformance` and its `StatePortFactory` from `@lazy-harness/monitoring-core`.
 The file backend is **only** `createFileStatePort` from `@lazy-harness/monitoring-core/state-file`;
-the default export graph does not import filesystem storage. No dependency was added.
+the default export graph does not import the file-storage backend (the manifest loader does use filesystem reads). No dependency was added.
 
 ```ts
 import { openMonitoringState } from '@lazy-harness/monitoring-core'

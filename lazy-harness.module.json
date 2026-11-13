@@ -1,0 +1,27 @@
+{
+  "schema": "lazy-harness-module/v1",
+  "id": "monitoring",
+  "version": "0.1.0",
+  "runtime": "inprocess-ts",
+  "entry": "composition.ts",
+  "requires": [
+    { "port": "worker.execution", "v": 1, "default": "packages/core/src/sdk/worker-execution-memory.ts" },
+    { "port": "judgement.model", "v": 1 },
+    { "port": "session.read-records", "v": 1 },
+    { "port": "memory.review-sink", "v": 1 },
+    { "port": "memory.source", "v": 1 },
+    { "port": "report.enqueue", "v": 1 },
+    { "port": "policy.registry", "v": 1 },
+    { "port": "rule.verifier", "v": 1 },
+    { "port": "state.persistence", "v": 1, "default": "packages/core/src/state/state-persistence.ts" }
+  ],
+  "test": "bun test",
+  "conformance": [
+    "packages/core/src/sdk/worker-execution-conformance.ts",
+    "packages/core/src/host/input-port-conformance.ts",
+    "packages/core/src/state/state-port-conformance.ts",
+    "modules/rule-steering/src/port-conformance.ts"
+  ],
+  "provides": ["references", "rule-steering", "memory"],
+  "records": ".lazy-harness/planning/monitoring-core-live-integration-plan.md"
+}

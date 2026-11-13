@@ -4,6 +4,7 @@
  * A terminal logical outcome is immutable: late values MUST NOT replace it or complete twice.
  * Limits apply across all submissions for this port instance; restart never resets lifetime accounting.
  */
+export const WORKER_EXECUTION_PORT_MAJOR = 1 as const
 export type WorkerExecutionLimits = Readonly<{ maxActive: number; maxQueued: number; maxWork: number; timeoutMs: number }>
 export type WorkerCompletion<T> = Readonly<{ status: 'completed'; certainty: 'terminal'; value: T }> |
   Readonly<{ status: 'failed' | 'timed-out' | 'cancelled' | 'refused'; certainty: 'terminal' | 'uncertain'; reason: string }>

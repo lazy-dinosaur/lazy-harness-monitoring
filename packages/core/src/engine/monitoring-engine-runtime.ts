@@ -53,6 +53,7 @@ export function createHandlerWorkerPort(handlers: Readonly<Record<string, JobHan
   }, limits)
 }
 export type Report = Readonly<{ moduleId: string; jobId: string; eventId: string; sessionId: string; mode: 'always' | 'on-result'; text: string; riskTier: string }>
+export const REPORT_ENQUEUE_PORT_MAJOR = 1 as const
 export type ReportEnqueueReceipt = Readonly<{ reportId: string; status: 'enqueued' | 'failed' | 'unknown'; reason?: string }>
 /** Hook output acknowledgement only; later extensions may remove it before provider input. */
 export type ReportDeliveryReceipt = Readonly<{ reportId: string; status: 'delivered'; kind: 'hook-boundary'; boundary: 'context_with_system' }>

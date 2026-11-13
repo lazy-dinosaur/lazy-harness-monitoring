@@ -26,6 +26,7 @@ const SnapshotSchema = Type.Object({ protocolVersion: Type.Literal(1), scope: In
   records: Type.Array(ReadRecordSchema, { maxItems: 4096 }),
 }, strict)
 export type ReadRecordSnapshot = Readonly<Static<typeof SnapshotSchema>>
+export const READ_RECORD_PORT_MAJOR = 1 as const
 export interface ReadRecordPort {
   readonly protocolVersion: 1
   snapshot(request: ReadRecordRequest): Promise<ReadRecordSnapshot>
@@ -103,6 +104,7 @@ export function validateReviewSinkReceipt(value: unknown, expectedCandidateId?: 
   if (expectedCandidateId !== undefined && receipt.candidateId !== expectedCandidateId) throw Error('Review sink receipt identity mismatch')
   return receipt
 }
+export const REVIEW_SINK_PORT_MAJOR = 1 as const
 export interface ReviewSinkPort {
   readonly protocolVersion: 1
   readonly retention: 'volatile'

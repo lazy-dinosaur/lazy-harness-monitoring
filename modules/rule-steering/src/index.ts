@@ -1,4 +1,4 @@
-import { canonicalJsonHash, configurationFailure, effectiveMonitoringJobs, freezeMonitoringData, parseMonitoringJsonData, validateMonitoringModuleDeclaration, type Decision, type JudgeTask, type MonitoringModuleBinding, type View } from '@lazy-harness/monitoring-core'
+import { canonicalJsonHash, configurationFailure, effectiveMonitoringJobs, effectiveMonitoringStage, freezeMonitoringData, parseMonitoringJsonData, validateMonitoringModuleDeclaration, type Decision, type JudgeTask, type MonitoringModuleBinding, type MonitoringRunStage, type View } from '@lazy-harness/monitoring-core'
 import type { EvidenceItem, JobHandler, RegisteredModule } from '@lazy-harness/monitoring-core/engine/monitoring-engine-runtime.ts'
 
 export const RULE_STEERING_MODULE_ID = 'rules.steer'
@@ -41,11 +41,17 @@ export const ruleSteeringBinding: MonitoringModuleBinding = Object.freeze({
     return { id: RULE_STEERING_MODULE_ID, eventKinds: ['tool.call', 'message.end'], referenceKinds: kinds, allowedActions: grants.actions, question: ruleSteeringQuestion, run: () => [] }
   },
 })
-/** Use this registration rather than relying on the low-level runtime's active default. */
-export function createRuleSteeringRegistration(): RegisteredModule {
-  return { moduleId: RULE_STEERING_MODULE_ID, declaration: ruleSteeringDeclaration, declarationHash: validated.hash, jobs: effectiveMonitoringJobs(ruleSteeringDeclaration, undefined, '/jobs')!, stage: 'observe' }
+export type RuleSteeringRegistrationOptions = Readonly<{ stage?: MonitoringRunStage }>
+/** Explicit observe default; the author ceiling is observe, so only off/observe are permitted. */
+export function createRuleSteeringRegistration(options: RuleSteeringRegistrationOptions = {}): RegisteredModule & { readonly stage: MonitoringRunStage } {
+  const stage = options.stage ?? 'observe'
+  if (!['off', 'observe', 'shadow', 'active'].includes(stage)) configurationFailure('STAGE_RAISED', '/stage', 'Unknown rule-steering run stage')
+  effectiveMonitoringStage(ruleSteeringDeclaration, stage, '/stage')
+  return { moduleId: RULE_STEERING_MODULE_ID, declaration: ruleSteeringDeclaration, declarationHash: validated.hash, jobs: effectiveMonitoringJobs(ruleSteeringDeclaration, undefined, '/jobs')!, stage }
 }
 
+export const POLICY_REGISTRY_PORT_MAJOR = 1 as const
+export const RULE_VERIFIER_PORT_MAJOR = 1 as const
 export type PolicyRegistry = Readonly<{ id: string; version: string; policies: readonly Readonly<{ id: string; version: string; title: string; summary?: string; scope?: string; exceptions?: readonly string[] }>[] }>
 export type PolicyReference = Readonly<{ id: string; kind: 'policy'; version: string; content: string }>
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
@@ -129,3 +135,5 @@ export function createRuleSteeringHandlers(verify?: RuleVerifier, maxLedgerKeys 
 }
 /** Safe inert compatibility export: never prepares without an injected verifier. */
 export const ruleSteeringHandlers = createRuleSteeringHandlers()
+
+export { runPolicyRegistryPortConformance, runRuleVerifierPortConformance, type PolicyRegistryConformanceFactory, type PolicyRegistryConformanceHarness, type RuleVerifierConformanceFactory } from './port-conformance.ts'
