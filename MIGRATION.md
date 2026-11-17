@@ -1,5 +1,15 @@
 # Migration from lazy-harness
 
+## 0.1.1 — bounded compaction summary coverage
+
+Tail snapshots add optional `compactionSummary`, `summaryIncluded` and `summaryOmittedBytes`.
+Consumers must treat the separate item as derived context, not a native message or instruction.
+`ObservationLimits.maxSummaryBytes` defaults to 8192; the total snapshot ceiling is unchanged.
+`tailMessages: 0` keeps the existing behavior. Material summary rendering changes from the
+ generic role fallback to `[summary]`; port majors remain v1. See the
+[observer/material budget contract](docs/design/compaction-summary-coverage.md).
+
+
 Historical extraction source: lazy-harness `work/monitoring-engine-v2` at `18bd0c8`.
 Canonical design/decision/planning records now live on lazy-harness **main**, via reviewed PRs
 (including ADR 0061/0062 in PRs #16/#17 and ADR 0063 in PR #22), not the frozen work branch: `.lazy-harness/planning/monitoring-engine-concept-v2.md` (concept),

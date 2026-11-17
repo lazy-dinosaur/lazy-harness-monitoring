@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { boundedSummary } from '@lazy-harness/monitoring-core/engine/compaction-summary.ts'
 import { observationEvents, type ObservationStage, type ObservationSnapshot, type ObservationFrame, type ObservationOutcome } from '@lazy-harness/monitoring-core/host'
 export { observationEvents, type ObservationStage, type ObservationSnapshot, type ObservationFrame, type ObservationOutcome }
 
@@ -9,10 +10,10 @@ export interface ObservationContext {
   signal?: AbortSignal
 }
 export type ObservationConsumer = (frame: ObservationFrame, lease: { signal: AbortSignal; isCurrent(): boolean }) => Promise<unknown> | unknown
-export type ObservationLimits = { maxQueue: number; maxRetained: number; maxSnapshotBytes: number; maxMessages: number; workerTimeoutMs: number; /** 0 = off (default, unchanged behaviour). >0: snapshot keeps only the newest N messages (byte-bounded) and stays available. */ tailMessages: number }
+export type ObservationLimits = { maxQueue: number; maxRetained: number; maxSnapshotBytes: number; maxMessages: number; workerTimeoutMs: number; /** 0 = off (default, unchanged behaviour). >0: snapshot keeps only the newest N messages (byte-bounded) and stays available. */ tailMessages: number; /** Upper summary share; also capped at one third of maxSnapshotBytes. */ maxSummaryBytes?: number }
 type Binding = { id: number; sessionId: string; context: ObservationContext }
 type Job = { frame: ObservationFrame; binding: Binding; epoch: number; controller: AbortController; logicalDone: boolean }
-const defaults: ObservationLimits = { maxQueue: 64, maxRetained: 512, maxSnapshotBytes: 65536, maxMessages: 128, workerTimeoutMs: 1000, tailMessages: 0 }
+const defaults: ObservationLimits = { maxQueue: 64, maxRetained: 512, maxSnapshotBytes: 65536, maxMessages: 128, workerTimeoutMs: 1000, tailMessages: 0, maxSummaryBytes: 8192 }
 const omitted = ['thinking-body', 'opaque-signatures', 'image-bytes', 'raw-provider-data', 'headers', 'arbitrary-tool-details']
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const immutable = <T>(x: T): T => { const copy = JSON.parse(JSON.stringify(x)); const freeze = (v: any): any => { if (v && typeof v === 'object') { Object.values(v).forEach(freeze); Object.freeze(v) } return v }; return freeze(copy) }
@@ -53,15 +54,24 @@ export function readObservationSnapshot(ctx: ObservationContext, stage: Observat
     // of the oldest messages were left out; a too-large system prompt is omitted (null) rather than failing.
     let keep = Math.min(limits.tailMessages, source.length)
     const tailOf = <T>(xs: readonly T[] | undefined, n: number) => xs === undefined ? undefined : xs.slice(Math.max(0, xs.length - n))
+    const summaryIndex = source.findLastIndex((m: any) => m?.role === 'compactionSummary')
+    const raw = summaryIndex < 0 ? undefined : String((source[summaryIndex] as any).summary ?? '')
+    let summaryBudget = Math.min(limits.maxSummaryBytes ?? 8192, Math.floor(limits.maxSnapshotBytes / 3))
     const build = (n: number, prompt: string | null) => {
-      const msgs = tailOf(source, n)!, obs = tailOf(observedMessages, n)
-      return { sessionId, leafId, branch: tailOf(nativeBranch, n)!.map(({ id, parentId, type }) => ({ id, parentId, type })), canonicalMessages: msgs.map(visibleMessage), effectiveSystemPrompt: prompt, stage, ...(obs ? { observedMessages: obs.map(visibleMessage) } : {}), available: true, truncatedHead: source.length - msgs.length, fullProviderContext: false as const, omitted }
+      const start = Math.max(source.length - n, summaryIndex + 1)
+      const msgs = source.slice(start), obs = tailOf(observedMessages, n)?.filter((m: any) => m?.role !== 'compactionSummary')
+      const summary = raw === undefined ? undefined : boundedSummary(raw, summaryBudget)
+      return { sessionId, leafId, branch: tailOf(nativeBranch, n)!.map(({ id, parentId, type }) => ({ id, parentId, type })), canonicalMessages: msgs.map(visibleMessage), effectiveSystemPrompt: prompt, stage, ...(obs ? { observedMessages: obs.map(visibleMessage) } : {}), available: true, truncatedHead: start, summaryIncluded: summary !== undefined, summaryOmittedBytes: summary?.omittedBytes ?? 0, ...(summary ? { compactionSummary: { role: 'compactionSummary' as const, summary: summary.text, provenance: 'derived-summary' as const } } : {}), fullProviderContext: false as const, omitted }
     }
     let prompt: string | null = ctx.getSystemPrompt()
     let tail = build(keep, prompt)
-    if (Buffer.byteLength(JSON.stringify(tail), 'utf8') > limits.maxSnapshotBytes) { prompt = null; tail = build(keep, prompt) }
-    while (keep > 0 && Buffer.byteLength(JSON.stringify(tail), 'utf8') > limits.maxSnapshotBytes) { keep = Math.floor(keep / 2); tail = build(keep, prompt) }
-    const canonicalHash = hash([sessionId, leafId, tail.canonicalMessages, tail.effectiveSystemPrompt, tail.available, tail.truncatedHead])
+    // Include the final hashes AND JSON escaping/metadata in the one total ceiling.
+    const fits = () => Buffer.byteLength(JSON.stringify({ ...tail, canonicalHash: '0'.repeat(64), revision: '0'.repeat(64) }), 'utf8') <= limits.maxSnapshotBytes
+    if (!fits()) { prompt = null; tail = build(keep, prompt) }
+    while (keep > 0 && !fits()) { keep--; tail = build(keep, prompt) }
+    while (summaryBudget > 0 && !fits()) { summaryBudget = Math.floor(summaryBudget / 2); tail = build(keep, prompt) }
+    if (!fits()) throw new Error('snapshot metadata exceeds byte limit')
+    const canonicalHash = hash([sessionId, leafId, tail.canonicalMessages, tail.effectiveSystemPrompt, tail.available, tail.truncatedHead, tail.compactionSummary, tail.summaryOmittedBytes])
     return immutable({ ...tail, canonicalHash, revision: hash([canonicalHash, stage, tail.observedMessages]) })
   }
   const excessive = source.length > limits.maxMessages || nativeBranch.length > limits.maxMessages || (observedMessages?.length ?? 0) > limits.maxMessages
