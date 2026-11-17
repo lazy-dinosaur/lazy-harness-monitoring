@@ -21,7 +21,7 @@ The canonical hash includes the separate summary and omission count.
 ## Material contract
 
 `regionLines` explicitly renders `[summary]` with a 4096-byte summary text cap.
-Truncation preserves Markdown section headers first, then round-robin body prefixes
+Truncation preserves standalone Fabric bracket headers (including Carry Forward) and Markdown section headers first, then round-robin body prefixes
 by Unicode code point, with line separators so headers stay recognizable. It appends
 `[summary omitted N bytes]`, counting original UTF-8 bytes, not formatting/marker bytes.
 If even all headers do not fit, a deterministic header prefix is retained.

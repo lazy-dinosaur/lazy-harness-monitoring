@@ -12,6 +12,16 @@ test('section-aware truncation is deterministic, UTF-8 bounded, preserves header
   expect(a.text).toContain(`[summary omitted ${a.omittedBytes} bytes]`); expect(a.text).not.toContain('�')
   expect(regionLines({ role: 'compactionSummary', summary }).lines[0]).toStartWith('[summary] ')
 })
+test('actual Fabric 0.135.2 bracket headers and every section prefix survive clipping', () => {
+  const headers = ['Recent user directions and discussion', 'Historical requests', 'Files And Changes', 'Fabric Activity', 'Outstanding Context', 'Earlier Turns', 'Current Status', 'Carry Forward']
+  const source = headers.map((h, i) => `[${h}]\n\nsection ${i} ` + 'x'.repeat(2000)).join('\n\n')
+  const rendered = boundedSummary(source, 1600)
+  expect(rendered).toEqual(boundedSummary(source, 1600))
+  for (const [i, h] of headers.entries()) expect(rendered.text).toContain(`[${h}]\n\nsection ${i} `)
+  expect(Buffer.byteLength(rendered.text)).toBeLessThanOrEqual(1600)
+  const body = rendered.text.replace(/\n\[summary omitted \d+ bytes\]$/, '')
+  expect(rendered.omittedBytes).toBe(Buffer.byteLength(source) - Buffer.byteLength(body))
+})
 test('9.8 KiB catalog plus long summary judges within 16 KiB; summary remains context, outside region and own items', async () => {
   const f = fixture()
   const module: RealtimeWatchModule = { id: 'summary.mod', watchEvents: ['input'], referenceKinds: ['knowledge', 'user-text', 'conversation-history'], grants: { referenceKinds: ['knowledge', 'user-text', 'conversation-history'], actions: ['monitoring.selected-material'] }, question: { instructions: 'q', criteria: { run: 'r', skip: 's', defer: 'd' } }, destination: 'sink' }

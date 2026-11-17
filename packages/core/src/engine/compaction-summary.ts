@@ -5,14 +5,14 @@ export function utf8Prefix(s: string, max: number): string {
   for (const c of s) { const n = bytes(c); if (used + n > max) break; out += c; used += n }
   return out
 }
-/** Derived context, not instructions. Preserve Markdown headers first, then fairly
+/** Derived context, not instructions. Preserve Fabric bracket and Markdown headers first, then fairly
  * share body bytes among sections. Omission counts original bytes, not markers. */
 export function boundedSummary(source: string, maxBytes: number, alreadyOmitted = 0): { text: string; omittedBytes: number } {
   maxBytes = Math.max(0, Math.floor(maxBytes))
   const total = bytes(source)
   if (total <= maxBytes && alreadyOmitted === 0) return { text: source, omittedBytes: 0 }
-  const sections = source.split(/(?=^#{1,6}[^\S\n]+\S)/m).filter(Boolean).map(s => {
-    const m = /^(#{1,6}[^\S\n]+[^\n]*\n?)/.exec(s)
+  const sections = source.split(/(?=^(?:#{1,6}[^\S\n]+[^\n]+|\[[^\]\n]{1,120}\])(?:\n|$))/m).filter(Boolean).map(s => {
+    const m = /^((?:#{1,6}[^\S\n]+[^\n]+|\[[^\]\n]{1,120}\])(?:\n|$))/.exec(s)
     const body = s.slice(m?.[0].length ?? 0), tail = body.endsWith('\n') ? '\n' : ''
     return { header: m?.[0] ?? '', body: tail ? body.slice(0, -1) : body, tail }
   })
