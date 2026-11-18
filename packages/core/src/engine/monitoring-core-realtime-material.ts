@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto'
+import { boundedSummary } from './compaction-summary.ts'
 import { freezeMonitoringData } from '../sdk/diagnostics.ts'
 import { redactSecrets } from './monitoring-core-redaction.ts'
 import { parseMonitoringJsonData } from '../sdk/schema.ts'
 import { observationEvents, type ObservationFrame } from '../host/frames.ts'
 import type { Reference } from './monitoring-core.ts'
 
-export type RealtimeMaterial = Reference & Readonly<{ text: string; provisional: boolean; provenance: Readonly<{ owner: 'observation' | 'host'; observationId: string | null; sessionId: string; binding: number; sourceEvent: string; cursor: number | null; step: number; stage: 'event-hook' | 'partial' | 'final-hook' | 'host-provided' }> }>
+export type RealtimeMaterial = Reference & Readonly<{ text: string; provisional: boolean; provenance: Readonly<{ owner: 'observation' | 'host' | 'derived-summary'; observationId: string | null; sessionId: string; binding: number; sourceEvent: string; cursor: number | null; step: number; stage: 'event-hook' | 'partial' | 'final-hook' | 'host-provided' }> }>
 export type MaterialWindowLimits = { maxSources: number; maxBytes: number; maxSourceBytes: number; maxFrames: number; maxEvents: number; maxBlocks: number; maxTrace: number }
 export type MaterialWindowOptions = Readonly<{ enabled?: boolean; allowedKinds: readonly string[]; toolFields?: Readonly<Record<string, readonly string[]>>; references?: readonly Reference[]; historyTurns?: number; historyMode?: 'blob' | 'message' | 'since-last'; metaEvents?: readonly string[]; limits?: Partial<MaterialWindowLimits>; /** Opt-in: clip an oversize item to maxSourceBytes (marked) instead of failing the window. */ clipOversize?: boolean }>
 const defaults: MaterialWindowLimits = { maxSources: 32, maxBytes: 16384, maxSourceBytes: 8192, maxFrames: 256, maxEvents: 2048, maxBlocks: 64, maxTrace: 128 }
@@ -31,7 +32,9 @@ function toolTarget(args: any): string {
 }
 export function regionLines(m: any): { lines: string[]; files: string[] } {
   const lines: string[] = [], files: string[] = []
-  if (m?.role === 'user') {
+  if (m?.role === 'compactionSummary') {
+    lines.push('[summary] ' + boundedSummary(textOf(m.summary), 4096).text)
+  } else if (m?.role === 'user') {
     const raw = textOf(m.content), stripped = raw.replace(REMINDER, '').trim()
     if (stripped) lines.push(`[user] ${clipText(stripped, 800)}${stripped.length !== raw.trim().length ? ' [harness reminder omitted]' : ''}`)
     else if (raw) lines.push('[harness reminder omitted]')
@@ -127,7 +130,7 @@ export class RealtimeMaterialWindow {
       if (this.options.clipOversize === true) { const overhead = bytes(JSON.stringify({ text: '', provisional, ...facts })) + 16; value = clipBytes(value, Math.max(64, this.limits.maxSourceBytes - overhead)) }
       const id = `material:${hash([this.scope, kind, key])}`
       const content = JSON.stringify({ text: value, provisional, ...facts })
-      const entry: RealtimeMaterial = { id, kind, version: hash([id, kind, content, provisional]), content, text: value, provisional, provenance: { owner: 'observation', observationId: frame.id, sessionId: frame.sessionId, binding: frame.binding, sourceEvent: frame.sourceEvent, cursor: frame.cursor, step, stage: provisional ? 'partial' : frame.sourceEvent === 'message_end' ? 'final-hook' : 'event-hook' } }
+      const entry: RealtimeMaterial = { id, kind, version: hash([id, kind, content, provisional]), content, text: value, provisional, provenance: { owner: facts.provenance === 'derived-summary' ? 'derived-summary' : 'observation', observationId: frame.id, sessionId: frame.sessionId, binding: frame.binding, sourceEvent: frame.sourceEvent, cursor: frame.cursor, step, stage: provisional ? 'partial' : frame.sourceEvent === 'message_end' ? 'final-hook' : 'event-hook' } }
       if (this.put(entry, frame.id)) ids.push(id)
     }
     try {
@@ -182,6 +185,20 @@ export class RealtimeMaterialWindow {
         // task154: everything since THIS module's last judged point (one window per module in independent pipelines),
         // newest first within the remaining budget; memo + deterministic state first; omitted items are marked.
         const msgs = frame.snapshot.canonicalMessages as readonly any[], base = frame.snapshot.truncatedHead ?? 0, total = base + msgs.length
+        this.removeLogical('conversation-history', 'compaction-summary')
+        const summary = frame.snapshot.compactionSummary ?? [...msgs].reverse().find(m => m?.role === 'compactionSummary')
+        if (summary) {
+          // Separate context gets a share of remaining room BEFORE newest-first region trimming.
+          const facts = { provenance: 'derived-summary' }, prior = ids.length
+          const room = Math.min(this.limits.maxSourceBytes, this.limits.maxBytes - this.size - 512)
+          let cap = Math.max(0, Math.min(4096, Math.floor(room / 2)))
+          const raw = String(summary.summary ?? ''), marker = /\n\[summary omitted (\d+) bytes\]$/.exec(raw)
+          const original = marker ? raw.slice(0, marker.index) : raw, omitted = marker ? Number(marker[1]) : 0
+          let value = '[summary] ' + boundedSummary(original, cap, omitted).text
+          while (cap > 0 && bytes(JSON.stringify({ text: value, provisional: false, ...facts })) > room) { cap = Math.floor(cap / 2); value = '[summary] ' + boundedSummary(original, cap, omitted).text }
+          if (cap >= 64 && this.materials.size + 2 < this.limits.maxSources) add('conversation-history', 'compaction-summary', value, false, facts)
+          ids.splice(prior) // summary is context, even when this frame has no own item
+        }
         this.regionAt.set(frame.id, total); if (this.regionAt.size > this.limits.maxFrames) this.regionAt.delete(this.regionAt.keys().next().value!)
         const start = this.regionStart ?? 0
         for (const [id, i] of [...this.regionIndex]) if (i < start) { const ref = this.materials.get(id); if (ref) { this.materials.delete(id); this.size -= bytes(ref.content) } this.regionIndex.delete(id) }
@@ -189,7 +206,9 @@ export class RealtimeMaterialWindow {
         this.removeLogical('conversation-history', 'region-omitted')
         const region: Array<[number, string, number, string?]> = []
         for (let i = Math.max(start, base); i < total; i++) {
-          const message = msgs[i - base], r = regionLines(message)
+          const message = msgs[i - base]
+          if (message?.role === 'compactionSummary') continue // separate context, never a region unit
+          const r = regionLines(message)
           const calls = Array.isArray(message?.content) ? message.content.filter((b: any) => b?.type === 'toolCall') : []
           let call = 0
           r.files.forEach(f => this.files.add(f))

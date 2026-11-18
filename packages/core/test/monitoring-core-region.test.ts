@@ -63,7 +63,7 @@ describe('between-region input (task154, model calls 0)', () => {
     const w = windowFor(), f1 = frame('turn_end', [user('a'), said('b')]); w.capture(f1, 1); w.markJudged(f1.id)
     w.capture(frame('session_compact', [{ role: 'compactionSummary', summary: 'earlier work: a, b' }]), 2)
     const f3 = frame('turn_end', [{ role: 'compactionSummary', summary: 'earlier work: a, b' }, user('c')]); w.capture(f3, 3)
-    expect(texts(w, f3)).toEqual(['[compactionSummary] earlier work: a, b', '[user] c'])
+    expect(texts(w, f3)).toEqual(['[summary] earlier work: a, b', '[user] c'])
   })
 })
 

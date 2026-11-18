@@ -4,7 +4,7 @@ import { parseMonitoringJsonData } from '../sdk/schema.ts'
 // Host-neutral frame contract (ADR 0062): every host adapter turns its agent events into these frames, in order.
 // The event vocabulary is the observed-hook vocabulary; other hosts map their events onto it.
 export type ObservationStage = 'canonical_projection' | 'context_conversation_at_hook' | 'context_with_system_at_hook'
-export type ObservationSnapshot = Readonly<{ sessionId: string; leafId: string | null; branch: readonly { id: string; parentId: string | null; type: string }[]; canonicalMessages: readonly unknown[]; effectiveSystemPrompt: string | null; observedMessages?: readonly unknown[]; /** Tail mode only: number of oldest messages left out of this snapshot. */ truncatedHead?: number; stage: ObservationStage; canonicalHash: string; revision: string; available: boolean; missing?: string; fullProviderContext: false; omitted: readonly string[] }>
+export type ObservationSnapshot = Readonly<{ sessionId: string; leafId: string | null; branch: readonly { id: string; parentId: string | null; type: string }[]; canonicalMessages: readonly unknown[]; effectiveSystemPrompt: string | null; observedMessages?: readonly unknown[]; /** Tail mode only: number of oldest messages left out of this snapshot. */ truncatedHead?: number; /** Separate bounded, derived context; never a native entry or judged item. */ compactionSummary?: Readonly<{ role: 'compactionSummary'; summary: string; provenance: 'derived-summary' }>; summaryIncluded?: boolean; summaryOmittedBytes?: number; stage: ObservationStage; canonicalHash: string; revision: string; available: boolean; missing?: string; fullProviderContext: false; omitted: readonly string[] }>
 export type ObservationFrame = Readonly<{ id: string; cursor: number; sourceEvent: string; kind: string; sessionId: string; binding: number; epoch: number; payload: unknown; snapshot: ObservationSnapshot; available: boolean }>
 export type ObservationOutcome = Readonly<{ frameId?: string; status: 'handled' | 'stale' | 'cancelled' | 'timeout' | 'overflow' | 'unavailable' | 'error'; reason: string }>
 const identifier = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 512
@@ -21,10 +21,16 @@ export function parseObservationFrame(input: unknown): ObservationFrame {
   if (!record(f) || !keys(f, ['id', 'cursor', 'sourceEvent', 'kind', 'sessionId', 'binding', 'epoch', 'payload', 'snapshot', 'available'])) return bad()
   if (!identifier(f.id) || !identifier(f.kind) || !identifier(f.sessionId) || typeof f.sourceEvent !== 'string' || !(observationEvents as readonly string[]).includes(f.sourceEvent) || !nonnegative(f.cursor) || f.cursor < 1 || !nonnegative(f.binding) || f.binding < 1 || !nonnegative(f.epoch) || typeof f.available !== 'boolean' || !Object.hasOwn(f, 'payload')) return bad()
   const s = f.snapshot
-  if (!record(s) || !keys(s, ['sessionId', 'leafId', 'branch', 'canonicalMessages', 'effectiveSystemPrompt', 'observedMessages', 'truncatedHead', 'stage', 'canonicalHash', 'revision', 'available', 'missing', 'fullProviderContext', 'omitted'])) return bad()
+  if (!record(s) || !keys(s, ['sessionId', 'leafId', 'branch', 'canonicalMessages', 'effectiveSystemPrompt', 'observedMessages', 'truncatedHead', 'summaryIncluded', 'summaryOmittedBytes', 'compactionSummary', 'stage', 'canonicalHash', 'revision', 'available', 'missing', 'fullProviderContext', 'omitted'])) return bad()
   if (s.sessionId !== f.sessionId || !(s.leafId === null || identifier(s.leafId)) || !Array.isArray(s.branch) || !Array.isArray(s.canonicalMessages) || !(s.effectiveSystemPrompt === null || typeof s.effectiveSystemPrompt === 'string') || !['canonical_projection', 'context_conversation_at_hook', 'context_with_system_at_hook'].includes(s.stage as string) || !identifier(s.canonicalHash) || !identifier(s.revision) || typeof s.available !== 'boolean' || s.fullProviderContext !== false || !Array.isArray(s.omitted) || !s.omitted.every(identifier)) return bad()
   if (s.branch.some(b => !record(b) || !keys(b, ['id', 'parentId', 'type']) || !identifier(b.id) || !(b.parentId === null || identifier(b.parentId)) || !identifier(b.type))) return bad()
   if ((Object.hasOwn(s, 'observedMessages') && !Array.isArray(s.observedMessages)) || (Object.hasOwn(s, 'truncatedHead') && !nonnegative(s.truncatedHead)) || (Object.hasOwn(s, 'missing') && !identifier(s.missing))) return bad()
+  if (Object.hasOwn(s, 'summaryIncluded') && typeof s.summaryIncluded !== 'boolean') return bad()
+  if (Object.hasOwn(s, 'summaryOmittedBytes') && !nonnegative(s.summaryOmittedBytes)) return bad()
+  if (Object.hasOwn(s, 'compactionSummary')) {
+    const c = s.compactionSummary
+    if (!record(c) || !keys(c, ['role', 'summary', 'provenance']) || c.role !== 'compactionSummary' || typeof c.summary !== 'string' || c.provenance !== 'derived-summary' || s.summaryIncluded !== true) return bad()
+  }
   return freezeMonitoringData(f) as ObservationFrame
 }
 

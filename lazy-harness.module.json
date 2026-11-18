@@ -1,7 +1,7 @@
 {
   "schema": "lazy-harness-module/v1",
   "id": "monitoring",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "runtime": "inprocess-ts",
   "entry": "composition.ts",
   "requires": [
